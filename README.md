@@ -28,6 +28,17 @@
 
 ---
 
+## Deployed on Base Sepolia
+
+| Contract | Address |
+|----------|---------|
+| **CuratedVaultHook** | [`0xe50FDb1d129B194114ED54108E9D091606985AC0`](https://sepolia.basescan.org/address/0xe50FDb1d129B194114ED54108E9D091606985AC0) |
+| **VaultShares (cvLP)** | [`0x904214E0EA6D2C7B9830F605E3627060599B16E6`](https://sepolia.basescan.org/address/0x904214E0EA6D2C7B9830F605E3627060599B16E6) |
+| **Mock USDC** | [`0x09Cab1dA3D7272e1cD9F08edCF12E2d140368D8C`](https://sepolia.basescan.org/address/0x09Cab1dA3D7272e1cD9F08edCF12E2d140368D8C) |
+| **Mock wstETH** | [`0x7E101E4fcd1ea1c613a707Bf03AE715553372B33`](https://sepolia.basescan.org/address/0x7E101E4fcd1ea1c613a707Bf03AE715553372B33) |
+
+---
+
 ## The Problem
 
 Concentrated liquidity on Uniswap v3/v4 offers dramatically higher capital efficiency &mdash; but it demands constant, active management. Most LPs face three painful realities:
@@ -327,18 +338,16 @@ CuratedLP is a complete vault primitive where the AI agent operates autonomously
 
 ## Deployed Contracts
 
-### Base Mainnet (Uniswap v4 Infrastructure)
+### Base Sepolia (Uniswap v4 Infrastructure)
 
 | Contract | Address |
 |----------|---------|
-| PoolManager | [`0x498581ff718922c3f8e6a244956af099b2652b2b`](https://basescan.org/address/0x498581ff718922c3f8e6a244956af099b2652b2b) |
-| PositionManager | [`0x7c5f5a4bbd8fd63184577525326123b519429bdc`](https://basescan.org/address/0x7c5f5a4bbd8fd63184577525326123b519429bdc) |
-| Universal Router | [`0x6ff5693b99212da76ad316178a184ab56d299b43`](https://basescan.org/address/0x6ff5693b99212da76ad316178a184ab56d299b43) |
-| Quoter | [`0x0d5e0f971ed27fbff6c2837bf31316121532048d`](https://basescan.org/address/0x0d5e0f971ed27fbff6c2837bf31316121532048d) |
-| StateView | [`0xa3c0c9b65bad0b08107aa264b0f3db444b867a71`](https://basescan.org/address/0xa3c0c9b65bad0b08107aa264b0f3db444b867a71) |
-| Permit2 | [`0x000000000022D473030F116dDEE9F6B43aC78BA3`](https://basescan.org/address/0x000000000022D473030F116dDEE9F6B43aC78BA3) |
-| wstETH | [`0xc1CBa3fCea344f92D9239c08C0568f6F2F0ee452`](https://basescan.org/address/0xc1CBa3fCea344f92D9239c08C0568f6F2F0ee452) |
-| USDC | [`0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913`](https://basescan.org/address/0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913) |
+| PoolManager | [`0x05E73354cFDd6745C338b50BcFDfA3Aa6fA03408`](https://sepolia.basescan.org/address/0x05E73354cFDd6745C338b50BcFDfA3Aa6fA03408) |
+| Universal Router | [`0x492e6456d9528771018deb9e87ef7750ef184104`](https://sepolia.basescan.org/address/0x492e6456d9528771018deb9e87ef7750ef184104) |
+| PositionManager | [`0x4b2c77d209d3405f41a037ec6c77f7f5b8e2ca80`](https://sepolia.basescan.org/address/0x4b2c77d209d3405f41a037ec6c77f7f5b8e2ca80) |
+| StateView | [`0x571291b572ed32ce6751a2cb2486ebee8defb9b4`](https://sepolia.basescan.org/address/0x571291b572ed32ce6751a2cb2486ebee8defb9b4) |
+| Quoter | [`0x4a6513c898fe1b2d0e78d3b0e0a4a151589b1cba`](https://sepolia.basescan.org/address/0x4a6513c898fe1b2d0e78d3b0e0a4a151589b1cba) |
+| Permit2 | [`0x000000000022D473030F116dDEE9F6B43aC78BA3`](https://sepolia.basescan.org/address/0x000000000022D473030F116dDEE9F6B43aC78BA3) |
 
 ### Base Sepolia (ERC-8004 &mdash; Live)
 
