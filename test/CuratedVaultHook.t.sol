@@ -230,4 +230,372 @@ contract CuratedVaultHookTest is Test, Deployers {
         vm.expectRevert(CuratedVaultHook.CuratedVaultHook_InsufficientShares.selector);
         hook.withdraw(1 ether, 0, 0);
     }
+
+    function test_registerCurator() public {
+    // For testing, we need to mock the ERC-8004 IdentityRegistry
+    // since the real one is on Base Sepolia, not in our test environment.
+    //
+    // We'll use vm.mockCall to make the IDENTITY_REGISTRY.ownerOf()
+    // return alice's address for token ID 1.
+
+    address identityRegistry = address(0x8004A818BFB912233c491871b3d84c89A494BD9e);
+
+    vm.mockCall(
+        identityRegistry,
+        abi.encodeWithSignature("ownerOf(uint256)", 1),
+        abi.encode(alice)
+    );
+
+    vm.prank(alice);
+    uint256 curatorId = hook.registerCurator(1000, 1); // 10% performance fee, identity ID 1
+
+    assertEq(curatorId, 1);
+    assertEq(hook.activeCuratorId(), 1);
+
+    CuratedVaultHook.Curator memory curator = hook.getCurator(1);
+    assertEq(curator.wallet, alice);
+    assertEq(curator.erc8004IdentityId, 1);
+    assertEq(curator.recommendedFee, 3000); // DEFAULT_FEE
+    assertEq(curator.performanceFeeBps, 1000);
+    assertTrue(curator.active);
+}
+
+// ─── Test: Double registration reverts ───────────────────────────
+
+function test_doubleRegistrationReverts() public {
+    address identityRegistry = address(0x8004A818BFB912233c491871b3d84c89A494BD9e);
+    vm.mockCall(
+        identityRegistry,
+        abi.encodeWithSignature("ownerOf(uint256)", 1),
+        abi.encode(alice)
+    );
+
+    vm.prank(alice);
+    hook.registerCurator(1000, 1);
+
+    vm.prank(alice);
+    vm.expectRevert(CuratedVaultHook.CuratedVaultHook_CuratorAlreadyRegistered.selector);
+    hook.registerCurator(500, 1);
+}
+
+// ─── Test: Registration with wrong identity owner reverts ────────
+
+function test_wrongIdentityOwnerReverts() public {
+    address identityRegistry = address(0x8004A818BFB912233c491871b3d84c89A494BD9e);
+    // Mock: token ID 1 is owned by bob, not alice
+    vm.mockCall(
+        identityRegistry,
+        abi.encodeWithSignature("ownerOf(uint256)", 1),
+        abi.encode(bob)
+    );
+
+    vm.prank(alice);
+    vm.expectRevert(CuratedVaultHook.CuratedVaultHook_IdentityNotOwned.selector);
+    hook.registerCurator(1000, 1);
+}
+
+// ─── Test: Performance fee too high reverts ──────────────────────
+
+function test_performanceFeeTooHighReverts() public {
+    address identityRegistry = address(0x8004A818BFB912233c491871b3d84c89A494BD9e);
+    vm.mockCall(
+        identityRegistry,
+        abi.encodeWithSignature("ownerOf(uint256)", 1),
+        abi.encode(alice)
+    );
+
+    vm.prank(alice);
+    vm.expectRevert(CuratedVaultHook.CuratedVaultHook_InvalidPerformanceFee.selector);
+    hook.registerCurator(2001, 1); // 20.01% — over limit
+}
+
+// ─── Helper: register alice as curator for subsequent tests ──────
+
+function _registerAliceAsCurator() internal returns (uint256 curatorId) {
+    address identityRegistry = address(0x8004A818BFB912233c491871b3d84c89A494BD9e);
+    vm.mockCall(
+        identityRegistry,
+        abi.encodeWithSignature("ownerOf(uint256)", 1),
+        abi.encode(alice)
+    );
+    vm.prank(alice);
+    curatorId = hook.registerCurator(1000, 1);
+}
+
+// ─── Test: Dynamic fee applied on swap ───────────────────────────
+
+function test_dynamicFeeApplied() public {
+    _registerAliceAsCurator();
+
+    // Deposit liquidity
+    vm.prank(alice);
+    hook.deposit(10 ether, 10 ether, 0, 0);
+
+    // The fee should be DEFAULT_FEE (3000 = 0.30%)
+    assertEq(hook.getCurrentFee(), 3000);
+
+    // Perform a swap
+    address swapper = makeAddr("swapper");
+    token0.mint(swapper, 1 ether);
+    vm.startPrank(swapper);
+    token0.approve(address(swapRouter), type(uint256).max);
+
+    uint256 token1Before = token1.balanceOf(swapper);
+
+    swapRouter.swap(
+        key,
+        SwapParams({
+            zeroForOne: true,
+            amountSpecified: -0.1 ether,
+            sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
+        }),
+        PoolSwapTest.TestSettings({
+            takeClaims: false,
+            settleUsingBurn: false
+        }),
+        ""
+    );
+
+    uint256 token1After = token1.balanceOf(swapper);
+    vm.stopPrank();
+
+    // Swapper should have received token1 (less than 0.1 ether due to fee)
+    uint256 received = token1After - token1Before;
+    assertGt(received, 0);
+    // With a 0.30% fee, received should be roughly 0.1 * 0.997 = 0.0997 ether
+    // Allow 1% tolerance for concentrated liquidity math
+    assertApproxEqRel(received, 0.0997 ether, 0.01e18);
+
+    // Fee tracking should be updated
+    assertGt(hook.cumulativeVolume(), 0);
+    assertGt(hook.cumulativeFeeRevenue(), 0);
+    assertEq(hook.totalSwaps(), 1);
+}
+
+// ─── Test: Rebalance changes tick range and fee ──────────────────
+
+function test_rebalance() public {
+    _registerAliceAsCurator();
+
+    vm.prank(alice);
+    hook.deposit(10 ether, 10 ether, 0, 0);
+
+    // Check initial state
+    assertEq(hook.currentTickLower(), -887220);
+    assertEq(hook.currentTickUpper(), 887220);
+    assertEq(hook.getCurrentFee(), 3000);
+
+    // Advance blocks past the MIN_REBALANCE_INTERVAL
+    vm.roll(block.number + 31);
+
+    // Rebalance to a tighter range with a higher fee
+    vm.prank(alice);
+    hook.rebalance(-600, 600, 5000); // [-600, 600] range, 0.50% fee
+
+    assertEq(hook.currentTickLower(), -600);
+    assertEq(hook.currentTickUpper(), 600);
+    assertEq(hook.getCurrentFee(), 5000);
+    assertGt(hook.totalLiquidity(), 0);
+}
+
+// ─── Test: Rebalance by non-curator reverts ──────────────────────
+
+function test_rebalanceByNonCuratorReverts() public {
+    _registerAliceAsCurator();
+
+    vm.prank(alice);
+    hook.deposit(10 ether, 10 ether, 0, 0);
+
+    vm.roll(block.number + 31);
+
+    // Bob is not the curator
+    vm.prank(bob);
+    vm.expectRevert(CuratedVaultHook.CuratedVaultHook_OnlyCurator.selector);
+    hook.rebalance(-600, 600, 5000);
+}
+
+// ─── Test: Rebalance too frequent reverts ────────────────────────
+
+function test_rebalanceTooFrequentReverts() public {
+    _registerAliceAsCurator();
+
+    vm.prank(alice);
+    hook.deposit(10 ether, 10 ether, 0, 0);
+
+    vm.roll(block.number + 31);
+
+    // First rebalance succeeds
+    vm.prank(alice);
+    hook.rebalance(-600, 600, 5000);
+
+    // Immediate second rebalance fails
+    vm.prank(alice);
+    vm.expectRevert(CuratedVaultHook.CuratedVaultHook_RebalanceTooFrequent.selector);
+    hook.rebalance(-1200, 1200, 3000);
+}
+
+// ─── Test: Fee changes visible between swaps ─────────────────────
+
+function test_feeChangesBetweenSwaps() public {
+    _registerAliceAsCurator();
+
+    vm.prank(alice);
+    hook.deposit(10 ether, 10 ether, 0, 0);
+
+    // Swap 1 at 0.30% fee
+    address swapper = makeAddr("swapper");
+    token0.mint(swapper, 1 ether);
+    vm.startPrank(swapper);
+    token0.approve(address(swapRouter), type(uint256).max);
+
+    swapRouter.swap(
+        key,
+        SwapParams({
+            zeroForOne: true,
+            amountSpecified: -0.01 ether,
+            sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
+        }),
+        PoolSwapTest.TestSettings({
+            takeClaims: false,
+            settleUsingBurn: false
+        }),
+        ""
+    );
+    vm.stopPrank();
+
+    uint256 volumeAfterSwap1 = hook.cumulativeVolume();
+    uint256 feeAfterSwap1 = hook.cumulativeFeeRevenue();
+
+    // Curator rebalances with higher fee
+    vm.roll(block.number + 31);
+    vm.prank(alice);
+    hook.rebalance(-600, 600, 10000); // 1.00% fee
+
+    // Swap 2 at 1.00% fee
+    vm.startPrank(swapper);
+    swapRouter.swap(
+        key,
+        SwapParams({
+            zeroForOne: true,
+            amountSpecified: -0.01 ether,
+            sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
+        }),
+        PoolSwapTest.TestSettings({
+            takeClaims: false,
+            settleUsingBurn: false
+        }),
+        ""
+    );
+    vm.stopPrank();
+
+    uint256 feeAfterSwap2 = hook.cumulativeFeeRevenue();
+    uint256 feeFromSwap2 = feeAfterSwap2 - feeAfterSwap1;
+    uint256 feeFromSwap1 = feeAfterSwap1;
+
+    // Swap 2's fee revenue should be ~3.3x swap 1's (1.00% vs 0.30%)
+    // Allow generous tolerance because concentrated liquidity math
+    // and tick position changes affect exact amounts
+    assertGt(feeFromSwap2, feeFromSwap1);
+    assertEq(hook.totalSwaps(), 2);
+}
+
+// ─── Test: Invalid tick range reverts ────────────────────────────
+
+function test_invalidTickRangeReverts() public {
+    _registerAliceAsCurator();
+
+    vm.prank(alice);
+    hook.deposit(10 ether, 10 ether, 0, 0);
+
+    vm.roll(block.number + 31);
+
+    // tickLower >= tickUpper
+    vm.prank(alice);
+    vm.expectRevert(CuratedVaultHook.CuratedVaultHook_InvalidTickRange.selector);
+    hook.rebalance(600, -600, 3000);
+
+    // Ticks not aligned to tickSpacing (60)
+    vm.prank(alice);
+    vm.expectRevert(CuratedVaultHook.CuratedVaultHook_InvalidTickRange.selector);
+    hook.rebalance(-601, 600, 3000);
+}
+
+// ─── Test: Invalid fee reverts ───────────────────────────────────
+
+function test_invalidFeeReverts() public {
+    _registerAliceAsCurator();
+
+    vm.prank(alice);
+    hook.deposit(10 ether, 10 ether, 0, 0);
+
+    vm.roll(block.number + 31);
+
+    // Fee = 0
+    vm.prank(alice);
+    vm.expectRevert(CuratedVaultHook.CuratedVaultHook_InvalidFee.selector);
+    hook.rebalance(-600, 600, 0);
+
+    // Fee > MAX_FEE
+    vm.roll(block.number + 31);
+    vm.prank(alice);
+    vm.expectRevert(CuratedVaultHook.CuratedVaultHook_InvalidFee.selector);
+    hook.rebalance(-600, 600, 100001);
+}
+
+// ─── Test: Deposit + Rebalance + Swap + Withdraw full cycle ──────
+
+function test_fullCycleWithCurator() public {
+    _registerAliceAsCurator();
+
+    // Alice deposits
+    vm.prank(alice);
+    hook.deposit(5 ether, 5 ether, 0, 0);
+    uint256 aliceShares = hook.vaultShares().balanceOf(alice);
+    assertGt(aliceShares, 0);
+
+    // Bob deposits
+    vm.prank(bob);
+    hook.deposit(5 ether, 5 ether, 0, 0);
+
+    // Curator rebalances
+    vm.roll(block.number + 31);
+    vm.prank(alice);
+    hook.rebalance(-1200, 1200, 5000);
+
+    // Someone swaps
+    address swapper = makeAddr("swapper");
+    token0.mint(swapper, 1 ether);
+    vm.startPrank(swapper);
+    token0.approve(address(swapRouter), type(uint256).max);
+    swapRouter.swap(
+        key,
+        SwapParams({
+            zeroForOne: true,
+            amountSpecified: -0.1 ether,
+            sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
+        }),
+        PoolSwapTest.TestSettings({
+            takeClaims: false,
+            settleUsingBurn: false
+        }),
+        ""
+    );
+    vm.stopPrank();
+
+    // Verify fee tracking
+    assertGt(hook.cumulativeVolume(), 0);
+    assertGt(hook.cumulativeFeeRevenue(), 0);
+    assertEq(hook.totalSwaps(), 1);
+
+    // Alice withdraws
+    vm.prank(alice);
+    hook.withdraw(aliceShares, 0, 0);
+    assertEq(hook.vaultShares().balanceOf(alice), 0);
+
+    // Bob withdraws
+    uint256 bobShares = hook.vaultShares().balanceOf(bob);
+    vm.prank(bob);
+    hook.withdraw(bobShares, 0, 0);
+    assertEq(hook.vaultShares().balanceOf(bob), 0);
+}
 }

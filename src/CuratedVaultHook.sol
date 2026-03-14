@@ -15,16 +15,19 @@ import {SwapParams, ModifyLiquidityParams} from "v4-core/src/types/PoolOperation
 import {Hooks} from "v4-core/src/libraries/Hooks.sol";
 import {BaseHook} from "v4-periphery/src/utils/BaseHook.sol";
 import {VaultShares} from "./VaultShares.sol";
+import {LPFeeLibrary} from "v4-core/src/libraries/LPFeeLibrary.sol";
+import {IIdentityRegistry} from "./interfaces/IIdentityRegistry.sol";
+import {IReputationRegistry} from "./interfaces/IReputationRegistry.sol";
 
 /// @title CuratedVaultHook
 /// @notice Uniswap v4 hook that manages a concentrated liquidity vault.
 ///         LPs deposit tokens and receive vault shares. A curator agent
 ///         manages the tick range and fee. All liquidity is owned by this hook.
-contract CuratedVaultHook is BaseHook,IUnlockCallback{
- using PoolIdLibrary for PoolKey;
- using StateLibrary for IPoolManager;
+contract CuratedVaultHook is BaseHook, IUnlockCallback {
+    using PoolIdLibrary for PoolKey;
+    using StateLibrary for IPoolManager;
 
- error CuratedVaultHook_PoolNotInitialized();
+    error CuratedVaultHook_PoolNotInitialized();
     error CuratedVaultHook_DirectLiquidityNotAllowed();
     error CuratedVaultHook_OnlyHookCanModifyLiquidity();
     error CuratedVaultHook_ZeroShares();
@@ -32,11 +35,23 @@ contract CuratedVaultHook is BaseHook,IUnlockCallback{
     error CuratedVaultHook_ZeroDeposit();
     error CuratedVaultHook_CallbackNotFromPoolManager();
     error CuratedVaultHook_SlippageExceeded();
+    error CuratedVaultHook_CuratorAlreadyRegistered();
+    error CuratedVaultHook_InvalidPerformanceFee();
+    error CuratedVaultHook_CuratorNotActive();
+    error CuratedVaultHook_OnlyCurator();
+    error CuratedVaultHook_InvalidFee();
+    error CuratedVaultHook_InvalidTickRange();
+    error CuratedVaultHook_RebalanceTooFrequent();
+    error CuratedVaultHook_IdentityNotOwned();
+    error CuratedVaultHook_NoCuratorSet();
 
     event Deposited(address indexed depositor, uint256 amount0, uint256 amount1, uint256 shares);
     event Withdrawn(address indexed withdrawer, uint256 shares, uint256 amount0, uint256 amount1);
     event LiquidityModified(int24 tickLower, int24 tickUpper, int128 liquidityDelta);
-
+    event CuratorRegistered(uint256 indexed curatorId, address indexed wallet, uint256 erc8004IdentityId);
+    event Rebalanced(uint256 indexed curatorId, int24 newTickLower, int24 newTickUpper, uint24 newFee);
+    event FeeUpdated(uint24 oldFee, uint24 newFee);
+    event SwapTracked(uint256 volume, uint256 feeRevenue);
 
     /// @dev Dead shares minted to address(1) on first deposit to prevent
     ///      share inflation attacks. See: ERC-4626 inflation attack.
@@ -47,18 +62,34 @@ contract CuratedVaultHook is BaseHook,IUnlockCallback{
     PoolId public poolId;
     bool public poolInitialized;
 
-     /// @dev The current concentrated liquidity position boundaries.
+    /// @dev The current concentrated liquidity position boundaries.
     int24 public currentTickLower;
     int24 public currentTickUpper;
 
-/// @dev Total liquidity units owned by this hook in the PoolManager.
+    /// @dev Total liquidity units owned by this hook in the PoolManager.
     uint128 public totalLiquidity;
+    /// @dev Maximum performance fee a curator can charge: 20% (2000 bps)
+    uint256 public constant MAX_PERFORMANCE_FEE_BPS = 2000;
+
+    /// @dev Minimum blocks between rebalances (prevents spam). ~1 minute on Base.
+    uint64 public constant MIN_REBALANCE_INTERVAL = 30;
+
+    /// @dev Default fee for new pools before a curator sets one: 0.30%
+    uint24 public constant DEFAULT_FEE = 3000;
+
+    /// @dev Maximum LP fee: 10% (100000 in hundredths of bip)
+    uint24 public constant MAX_FEE = 100000;
+
+    /// @dev ERC-8004 contracts on Base Sepolia
+    IIdentityRegistry public constant IDENTITY_REGISTRY = IIdentityRegistry(0x8004A818BFB912233c491871b3d84c89A494BD9e);
+    IReputationRegistry public constant REPUTATION_REGISTRY =
+        IReputationRegistry(0x8004B663056A597Dffe9eCcC1965A193B7388713);
 
     /// @dev Salt for the hook's position in the PoolManager.
     ///      v4 uses salt to distinguish positions owned by the same address.
     bytes32 public constant POSITION_SALT = bytes32(uint256(0xCDAB));
 
-     enum CallbackAction {
+    enum CallbackAction {
         ADD_LIQUIDITY,
         REMOVE_LIQUIDITY
     }
@@ -70,6 +101,36 @@ contract CuratedVaultHook is BaseHook,IUnlockCallback{
         int256 liquidityDelta;
         address sender;
     }
+
+    struct Curator {
+        address wallet; // The curator's address
+        uint256 erc8004IdentityId; // ERC-8004 identity token ID
+        uint24 recommendedFee; // Current fee in hundredths of bip
+        uint256 performanceFeeBps; // Performance fee in basis points (max 2000 = 20%)
+        uint64 lastRebalanceBlock; // Block number of last rebalance
+        bool active; // Whether this curator is active
+    }
+    /// @dev Curator ID → Curator data. Curator IDs are sequential starting at 1.
+    mapping(uint256 => Curator) public curators;
+
+    /// @dev Wallet address → Curator ID. Prevents double registration.
+    mapping(address => uint256) public curatorByWallet;
+
+    /// @dev The next curator ID to assign.
+    uint256 public nextCuratorId = 1;
+
+    /// @dev The currently active curator for this vault. 0 = no curator.
+    uint256 public activeCuratorId;
+
+    // ─── Fee tracking state ──────────────────────────────────────────
+    /// @dev Cumulative absolute swap volume (token0 denominated).
+    uint256 public cumulativeVolume;
+
+    /// @dev Cumulative approximate fee revenue (token0 denominated).
+    uint256 public cumulativeFeeRevenue;
+
+    /// @dev Total number of swaps processed.
+    uint256 public totalSwaps;
 
     // ═════════════════════════════════════════════════════════════════════
     //                          CONSTRUCTOR
@@ -83,21 +144,16 @@ contract CuratedVaultHook is BaseHook,IUnlockCallback{
     //                       HOOK PERMISSIONS
     // ═════════════════════════════════════════════════════════════════════
 
-    function getHookPermissions()
-        public
-        pure
-        override
-        returns (Hooks.Permissions memory)
-    {
+    function getHookPermissions() public pure override returns (Hooks.Permissions memory) {
         return Hooks.Permissions({
             beforeInitialize: false,
-            afterInitialize: true,         // Store pool key
-            beforeAddLiquidity: true,       // Block direct adds
+            afterInitialize: true, // Store pool key
+            beforeAddLiquidity: true, // Block direct adds
             afterAddLiquidity: false,
-            beforeRemoveLiquidity: true,    // Block direct removes
+            beforeRemoveLiquidity: true, // Block direct removes
             afterRemoveLiquidity: false,
-            beforeSwap: true,               
-            afterSwap: true,               
+            beforeSwap: true,
+            afterSwap: true,
             beforeDonate: false,
             afterDonate: false,
             beforeSwapReturnDelta: false,
@@ -113,20 +169,17 @@ contract CuratedVaultHook is BaseHook,IUnlockCallback{
 
     /// @dev Called by PoolManager after pool initialization.
     ///      Stores the pool key so the hook knows which pool it manages.
-    function _afterInitialize(
-        address,
-        PoolKey calldata key,
-        uint160,
-        int24
-    ) internal override returns (bytes4) {
+    function _afterInitialize(address, PoolKey calldata key, uint160, int24) internal override returns (bytes4) {
         poolKey = key;
         poolId = key.toId();
         poolInitialized = true;
 
-        // Set initial tick range: wide range for safety on first deploy.
-        // The curator will tighten this in Phase 2.
-        currentTickLower = -887220; // Near MIN_TICK, aligned to tickSpacing=60
-        currentTickUpper = 887220;  // Near MAX_TICK, aligned to tickSpacing=60
+        currentTickLower = -887220;
+        currentTickUpper = 887220;
+
+        // Set the initial dynamic fee so swaps work before a curator registers.
+        // Without this, dynamic fee pools start at 0%.
+        poolManager.updateDynamicLPFee(key, DEFAULT_FEE);
 
         return this.afterInitialize.selector;
     }
@@ -134,12 +187,12 @@ contract CuratedVaultHook is BaseHook,IUnlockCallback{
     /// @dev Blocks ALL direct liquidity additions to the pool.
     ///      Users MUST go through deposit() on this hook.
     ///      The hook itself IS allowed to add liquidity (via the unlock callback).
-    function _beforeAddLiquidity(
-        address sender,
-        PoolKey calldata,
-        ModifyLiquidityParams calldata,
-        bytes calldata
-    ) internal view override returns (bytes4) {
+    function _beforeAddLiquidity(address sender, PoolKey calldata, ModifyLiquidityParams calldata, bytes calldata)
+        internal
+        view
+        override
+        returns (bytes4)
+    {
         // The PoolManager calls this with sender = the address that called
         // poolManager.modifyLiquidity(). When the hook itself adds liquidity
         // via the unlock callback, the sender is this contract.
@@ -151,42 +204,67 @@ contract CuratedVaultHook is BaseHook,IUnlockCallback{
 
     /// @dev Blocks ALL direct liquidity removals from the pool.
     ///      Users MUST go through withdraw() on this hook.
-    function _beforeRemoveLiquidity(
-        address sender,
-        PoolKey calldata,
-        ModifyLiquidityParams calldata,
-        bytes calldata
-    ) internal view override returns (bytes4) {
+    function _beforeRemoveLiquidity(address sender, PoolKey calldata, ModifyLiquidityParams calldata, bytes calldata)
+        internal
+        view
+        override
+        returns (bytes4)
+    {
         if (sender != address(this)) {
             revert CuratedVaultHook_DirectLiquidityNotAllowed();
         }
         return this.beforeRemoveLiquidity.selector;
     }
 
-    /// @dev Phase 1 stub: returns default fee. Phase 2 adds dynamic fees.
-    function _beforeSwap(
-        address,
-        PoolKey calldata,
-        SwapParams calldata,
-        bytes calldata
-    ) internal pure override returns (bytes4, BeforeSwapDelta, uint24) {
-        // Return zero delta (no fee override yet) and no fee adjustment.
-        // Phase 2 will return: fee | LPFeeLibrary.OVERRIDE_FEE_FLAG
-        return (
-            this.beforeSwap.selector,
-            BeforeSwapDeltaLibrary.ZERO_DELTA,
-            0
-        );
+    /// @dev Returns the active curator's recommended fee for every swap.
+    ///      If no curator is set, returns DEFAULT_FEE.
+    function _beforeSwap(address, PoolKey calldata, SwapParams calldata, bytes calldata)
+        internal
+        view
+        override
+        returns (bytes4, BeforeSwapDelta, uint24)
+    {
+        uint24 fee;
+
+        if (activeCuratorId != 0) {
+            fee = curators[activeCuratorId].recommendedFee;
+        } else {
+            fee = DEFAULT_FEE;
+        }
+
+        // Return the fee with OVERRIDE_FEE_FLAG set.
+        // This tells the PoolManager: "use this fee for this swap,
+        // overriding whatever fee is stored in the pool's slot0."
+        return (this.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, fee | LPFeeLibrary.OVERRIDE_FEE_FLAG);
     }
 
-    /// @dev Phase 1 stub: no-op. Phase 2 adds fee revenue tracking.
-    function _afterSwap(
-        address,
-        PoolKey calldata,
-        SwapParams calldata,
-        BalanceDelta,
-        bytes calldata
-    ) internal pure override returns (bytes4, int128) {
+    /// @dev Track cumulative swap volume and approximate fee revenue.
+    function _afterSwap(address, PoolKey calldata, SwapParams calldata params, BalanceDelta delta, bytes calldata)
+        internal
+        override
+        returns (bytes4, int128)
+    {
+        // Compute the absolute swap volume.
+        // delta.amount0() is the change in token0: negative if swapper sold token0,
+        // positive if swapper bought token0.
+        // We use the absolute value of amount0 as the volume measure.
+        int128 amount0 = delta.amount0();
+        uint256 volume = amount0 < 0 ? uint256(uint128(-amount0)) : uint256(uint128(amount0));
+
+        // Approximate fee revenue:
+        // The PoolManager already deducted the fee from the swap output.
+        // Fee revenue ≈ volume * currentFee / 1_000_000
+        // (fee is in hundredths of a bip, so 1_000_000 = 100%)
+        uint24 currentFee = activeCuratorId != 0 ? curators[activeCuratorId].recommendedFee : DEFAULT_FEE;
+
+        uint256 feeRevenue = (volume * uint256(currentFee)) / 1_000_000;
+
+        cumulativeVolume += volume;
+        cumulativeFeeRevenue += feeRevenue;
+        totalSwaps++;
+
+        emit SwapTracked(volume, feeRevenue);
+
         return (this.afterSwap.selector, 0);
     }
 
@@ -200,12 +278,10 @@ contract CuratedVaultHook is BaseHook,IUnlockCallback{
     /// @param amount0Min Minimum token0 accepted (slippage protection).
     /// @param amount1Min Minimum token1 accepted (slippage protection).
     /// @return shares Number of vault shares minted.
-    function deposit(
-        uint256 amount0Desired,
-        uint256 amount1Desired,
-        uint256 amount0Min,
-        uint256 amount1Min
-    ) external returns (uint256 shares) {
+    function deposit(uint256 amount0Desired, uint256 amount1Desired, uint256 amount0Min, uint256 amount1Min)
+        external
+        returns (uint256 shares)
+    {
         if (!poolInitialized) revert CuratedVaultHook_PoolNotInitialized();
         if (amount0Desired == 0 && amount1Desired == 0) revert CuratedVaultHook_ZeroDeposit();
 
@@ -235,11 +311,8 @@ contract CuratedVaultHook is BaseHook,IUnlockCallback{
         uint256 amount0Used;
         uint256 amount1Used;
         {
-            (int256 delta0, int256 delta1) = _modifyPoolLiquidity(
-                currentTickLower,
-                currentTickUpper,
-                int256(uint256(liquidity))
-            );
+            (int256 delta0, int256 delta1) =
+                _modifyPoolLiquidity(currentTickLower, currentTickUpper, int256(uint256(liquidity)));
             // delta0 and delta1 are NEGATIVE when we owe tokens to the pool.
             amount0Used = uint256(-delta0);
             amount1Used = uint256(-delta1);
@@ -288,30 +361,24 @@ contract CuratedVaultHook is BaseHook,IUnlockCallback{
     /// @param amount1Min Minimum token1 to receive (slippage protection).
     /// @return amount0 Tokens returned to withdrawer.
     /// @return amount1 Tokens returned to withdrawer.
-    function withdraw(
-        uint256 sharesToBurn,
-        uint256 amount0Min,
-        uint256 amount1Min
-    ) external returns (uint256 amount0, uint256 amount1) {
+    function withdraw(uint256 sharesToBurn, uint256 amount0Min, uint256 amount1Min)
+        external
+        returns (uint256 amount0, uint256 amount1)
+    {
         if (!poolInitialized) revert CuratedVaultHook_PoolNotInitialized();
         if (sharesToBurn == 0) revert CuratedVaultHook_InsufficientShares();
         if (vaultShares.balanceOf(msg.sender) < sharesToBurn) revert CuratedVaultHook_InsufficientShares();
 
         // ── Step 1: Calculate proportional liquidity to remove ───────
         uint256 currentTotalShares = vaultShares.totalSupply();
-        uint128 liquidityToRemove = uint128(
-            (uint256(totalLiquidity) * sharesToBurn) / currentTotalShares
-        );
+        uint128 liquidityToRemove = uint128((uint256(totalLiquidity) * sharesToBurn) / currentTotalShares);
 
         if (liquidityToRemove == 0) revert CuratedVaultHook_ZeroShares();
 
         // ── Step 2: Remove liquidity from pool via unlock callback ───
         // Negative liquidityDelta = remove liquidity.
-        (int256 delta0, int256 delta1) = _modifyPoolLiquidity(
-            currentTickLower,
-            currentTickUpper,
-            -int256(uint256(liquidityToRemove))
-        );
+        (int256 delta0, int256 delta1) =
+            _modifyPoolLiquidity(currentTickLower, currentTickUpper, -int256(uint256(liquidityToRemove)));
 
         // delta0 and delta1 are POSITIVE when the pool owes us tokens.
         amount0 = uint256(delta0);
@@ -346,9 +413,7 @@ contract CuratedVaultHook is BaseHook,IUnlockCallback{
     ///      CRITICAL SECURITY: This function is called by the PoolManager
     ///      via the IUnlockCallback interface. The `onlyPoolManager` check
     ///      ensures only the PoolManager can call it.
-    function unlockCallback(
-        bytes calldata data
-    ) external override returns (bytes memory) {
+    function unlockCallback(bytes calldata data) external override returns (bytes memory) {
         if (msg.sender != address(poolManager)) {
             revert CuratedVaultHook_CallbackNotFromPoolManager();
         }
@@ -356,7 +421,7 @@ contract CuratedVaultHook is BaseHook,IUnlockCallback{
         CallbackData memory cbData = abi.decode(data, (CallbackData));
 
         // Perform the liquidity modification
-        (BalanceDelta callerDelta, ) = poolManager.modifyLiquidity(
+        (BalanceDelta callerDelta,) = poolManager.modifyLiquidity(
             poolKey,
             ModifyLiquidityParams({
                 tickLower: cbData.tickLower,
@@ -364,7 +429,7 @@ contract CuratedVaultHook is BaseHook,IUnlockCallback{
                 liquidityDelta: cbData.liquidityDelta,
                 salt: POSITION_SALT
             }),
-            ""  // No hookData needed — we ARE the hook
+            "" // No hookData needed — we ARE the hook
         );
 
         // ── Settle deltas ────────────────────────────────────────────
@@ -391,26 +456,162 @@ contract CuratedVaultHook is BaseHook,IUnlockCallback{
     }
 
     // ═════════════════════════════════════════════════════════════════════
+    //                     REBALANCE FUNCTION
+    // ═════════════════════════════════════════════════════════════════════
+    /// @notice Rebalance the vault's liquidity position to a new tick range and fee.
+    /// @dev Only the active curator can call this.
+    /// @param newTickLower New lower tick boundary (must be aligned to tickSpacing).
+    /// @param newTickUpper New upper tick boundary (must be aligned to tickSpacing).
+    /// @param newFee New swap fee in hundredths of a bip (e.g., 3000 = 0.30%).
+    function rebalance(int24 newTickLower, int24 newTickUpper, uint24 newFee) external {
+        if (!poolInitialized) revert CuratedVaultHook_PoolNotInitialized();
+
+        // ── Check 1: Caller is the active curator ────────────────────
+        uint256 curatorId = curatorByWallet[msg.sender];
+        if (curatorId == 0) revert CuratedVaultHook_OnlyCurator();
+        if (curatorId != activeCuratorId) revert CuratedVaultHook_OnlyCurator();
+
+        Curator storage curator = curators[curatorId];
+        if (!curator.active) revert CuratedVaultHook_CuratorNotActive();
+
+        // ── Check 2: Rate limiting ───────────────────────────────────
+        if (uint64(block.number) < curator.lastRebalanceBlock + MIN_REBALANCE_INTERVAL) {
+            revert CuratedVaultHook_RebalanceTooFrequent();
+        }
+
+        // ── Check 3: Valid tick range ────────────────────────────────
+        if (newTickLower >= newTickUpper) revert CuratedVaultHook_InvalidTickRange();
+        // Ticks must be aligned to pool's tickSpacing (60)
+        if (newTickLower % poolKey.tickSpacing != 0) revert CuratedVaultHook_InvalidTickRange();
+        if (newTickUpper % poolKey.tickSpacing != 0) revert CuratedVaultHook_InvalidTickRange();
+
+        // ── Check 4: Valid fee ───────────────────────────────────────
+        if (newFee > MAX_FEE) revert CuratedVaultHook_InvalidFee();
+        if (newFee == 0) revert CuratedVaultHook_InvalidFee();
+
+        // ── Step 1: Remove ALL current liquidity ─────────────────────
+        // Only rebalance if there is existing liquidity.
+        if (totalLiquidity > 0) {
+            _modifyPoolLiquidity(currentTickLower, currentTickUpper, -int256(uint256(totalLiquidity)));
+
+            // After removal, the hook holds the withdrawn tokens in its balance.
+            // We don't transfer them anywhere — they stay in the hook for re-deposit.
+        }
+
+        // ── Step 2: Update state ─────────────────────────────────────
+        uint24 oldFee = curator.recommendedFee;
+        currentTickLower = newTickLower;
+        currentTickUpper = newTickUpper;
+        curator.recommendedFee = newFee;
+        curator.lastRebalanceBlock = uint64(block.number);
+
+        // ── Step 3: Re-add ALL liquidity at new range ────────────────
+        if (totalLiquidity > 0) {
+            // Recalculate how much liquidity we can provide with our
+            // current token balances at the new tick range.
+            (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(poolId);
+
+            IERC20Minimal token0 = IERC20Minimal(Currency.unwrap(poolKey.currency0));
+            IERC20Minimal token1 = IERC20Minimal(Currency.unwrap(poolKey.currency1));
+
+            uint256 balance0 = token0.balanceOf(address(this));
+            uint256 balance1 = token1.balanceOf(address(this));
+
+            uint128 newLiquidity = _getLiquidityForAmounts(
+                sqrtPriceX96,
+                TickMath.getSqrtPriceAtTick(newTickLower),
+                TickMath.getSqrtPriceAtTick(newTickUpper),
+                balance0,
+                balance1
+            );
+
+            if (newLiquidity > 0) {
+                _modifyPoolLiquidity(newTickLower, newTickUpper, int256(uint256(newLiquidity)));
+
+                // Update totalLiquidity to reflect the new position.
+                // Note: newLiquidity may differ from old totalLiquidity because
+                // the tick range changed. This is expected.
+                totalLiquidity = newLiquidity;
+            } else {
+                totalLiquidity = 0;
+            }
+        }
+
+        emit FeeUpdated(oldFee, newFee);
+        emit Rebalanced(curatorId, newTickLower, newTickUpper, newFee);
+        emit LiquidityModified(newTickLower, newTickUpper, int128(uint128(totalLiquidity)));
+    }
+
+    // ═════════════════════════════════════════════════════════════════════
+    //                      CURATOR REGISTRATION
+    // ═════════════════════════════════════════════════════════════════════
+    /// @notice Register as a curator for this vault.
+    /// @param performanceFeeBps Performance fee in basis points (max 2000 = 20%).
+    /// @param erc8004IdentityId The caller's ERC-8004 identity NFT token ID.
+    /// @return curatorId The assigned curator ID.
+    function registerCurator(uint256 performanceFeeBps, uint256 erc8004IdentityId)
+        external
+        returns (uint256 curatorId)
+    {
+        // ── Check 1: Not already registered ──────────────────────────
+        if (curatorByWallet[msg.sender] != 0) revert CuratedVaultHook_CuratorAlreadyRegistered();
+
+        // ── Check 2: Performance fee within bounds ───────────────────
+        if (performanceFeeBps > MAX_PERFORMANCE_FEE_BPS) revert CuratedVaultHook_InvalidPerformanceFee();
+
+        // ── Check 3: Caller owns the ERC-8004 identity NFT ──────────
+        // This is a REAL on-chain call to the live IdentityRegistry
+        // at 0x8004A818BFB912233c491871b3d84c89A494BD9e on Base Sepolia.
+        // If the caller doesn't own this identity, the call reverts.
+        //
+        // NOTE: If the ERC-8004 contract's ownerOf() reverts for
+        // non-existent tokens (standard ERC-721 behavior), this
+        // will also revert, which is the correct behavior.
+        address identityOwner = IDENTITY_REGISTRY.ownerOf(erc8004IdentityId);
+        if (identityOwner != msg.sender) revert CuratedVaultHook_IdentityNotOwned();
+
+        // ── Store the curator ────────────────────────────────────────
+        curatorId = nextCuratorId++;
+
+        curators[curatorId] = Curator({
+            wallet: msg.sender,
+            erc8004IdentityId: erc8004IdentityId,
+            recommendedFee: DEFAULT_FEE, // Start at 0.30%
+            performanceFeeBps: performanceFeeBps,
+            lastRebalanceBlock: 0,
+            active: true
+        });
+
+        curatorByWallet[msg.sender] = curatorId;
+
+        // If this is the first curator, make them active automatically.
+        if (activeCuratorId == 0) {
+            activeCuratorId = curatorId;
+        }
+
+        emit CuratorRegistered(curatorId, msg.sender, erc8004IdentityId);
+    }
+
+    // ═════════════════════════════════════════════════════════════════════
     //                      INTERNAL HELPERS
     // ═════════════════════════════════════════════════════════════════════
 
     /// @dev Calls poolManager.unlock() with encoded callback data.
     ///      Returns the actual token amounts consumed/returned.
-    function _modifyPoolLiquidity(
-        int24 tickLower,
-        int24 tickUpper,
-        int256 liquidityDelta
-    ) internal returns (int256 amount0, int256 amount1) {
+    function _modifyPoolLiquidity(int24 tickLower, int24 tickUpper, int256 liquidityDelta)
+        internal
+        returns (int256 amount0, int256 amount1)
+    {
         bytes memory result = poolManager.unlock(
-            abi.encode(CallbackData({
-                action: liquidityDelta > 0
-                    ? CallbackAction.ADD_LIQUIDITY
-                    : CallbackAction.REMOVE_LIQUIDITY,
-                tickLower: tickLower,
-                tickUpper: tickUpper,
-                liquidityDelta: liquidityDelta,
-                sender: msg.sender
-            }))
+            abi.encode(
+                CallbackData({
+                    action: liquidityDelta > 0 ? CallbackAction.ADD_LIQUIDITY : CallbackAction.REMOVE_LIQUIDITY,
+                    tickLower: tickLower,
+                    tickUpper: tickUpper,
+                    liquidityDelta: liquidityDelta,
+                    sender: msg.sender
+                })
+            )
         );
 
         (amount0, amount1) = abi.decode(result, (int256, int256));
@@ -425,10 +626,7 @@ contract CuratedVaultHook is BaseHook,IUnlockCallback{
             uint256 amount = uint256(uint128(-delta));
             // sync() must be called before transferring ERC-20 tokens
             poolManager.sync(currency);
-            IERC20Minimal(Currency.unwrap(currency)).transfer(
-                address(poolManager),
-                amount
-            );
+            IERC20Minimal(Currency.unwrap(currency)).transfer(address(poolManager), amount);
             poolManager.settle();
         } else if (delta > 0) {
             // The pool owes us tokens. Take them.
@@ -467,20 +665,20 @@ contract CuratedVaultHook is BaseHook,IUnlockCallback{
         }
     }
 
-    function _getLiquidityForAmount0(
-        uint160 sqrtPriceAX96,
-        uint160 sqrtPriceBX96,
-        uint256 amount0
-    ) internal pure returns (uint128) {
+    function _getLiquidityForAmount0(uint160 sqrtPriceAX96, uint160 sqrtPriceBX96, uint256 amount0)
+        internal
+        pure
+        returns (uint128)
+    {
         uint256 intermediate = uint256(sqrtPriceAX96) * uint256(sqrtPriceBX96) / (1 << 96);
         return uint128(amount0 * intermediate / (uint256(sqrtPriceBX96) - uint256(sqrtPriceAX96)));
     }
 
-    function _getLiquidityForAmount1(
-        uint160 sqrtPriceAX96,
-        uint160 sqrtPriceBX96,
-        uint256 amount1
-    ) internal pure returns (uint128) {
+    function _getLiquidityForAmount1(uint160 sqrtPriceAX96, uint160 sqrtPriceBX96, uint256 amount1)
+        internal
+        pure
+        returns (uint128)
+    {
         return uint128(amount1 * (1 << 96) / (uint256(sqrtPriceBX96) - uint256(sqrtPriceAX96)));
     }
 
@@ -509,5 +707,39 @@ contract CuratedVaultHook is BaseHook,IUnlockCallback{
     function getTokens() external view returns (address token0, address token1) {
         token0 = Currency.unwrap(poolKey.currency0);
         token1 = Currency.unwrap(poolKey.currency1);
+    }
+
+    /// @notice Get full curator data.
+    function getCurator(uint256 curatorId) external view returns (Curator memory) {
+        return curators[curatorId];
+    }
+
+    /// @notice Get the active curator's current recommended fee.
+    function getCurrentFee() external view returns (uint24) {
+        if (activeCuratorId == 0) return DEFAULT_FEE;
+        return curators[activeCuratorId].recommendedFee;
+    }
+
+    /// @notice Get vault performance metrics.
+    function getPerformanceMetrics()
+        external
+        view
+        returns (
+            uint256 volume,
+            uint256 feeRevenue,
+            uint256 swapCount,
+            uint128 liquidity,
+            int24 tickLower,
+            int24 tickUpper,
+            uint24 currentFee
+        )
+    {
+        volume = cumulativeVolume;
+        feeRevenue = cumulativeFeeRevenue;
+        swapCount = totalSwaps;
+        liquidity = totalLiquidity;
+        tickLower = currentTickLower;
+        tickUpper = currentTickUpper;
+        currentFee = activeCuratorId != 0 ? curators[activeCuratorId].recommendedFee : DEFAULT_FEE;
     }
 }
