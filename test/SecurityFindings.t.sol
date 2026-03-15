@@ -34,6 +34,18 @@ pragma solidity ^0.8.26;
  *   - After re-deployment, _checkIdleBalance() reverts if idle balances exceed limits
  *   - Curators pass 0 for strict protection, type(uint256).max to opt out
  *
+ * ─── Finding #7 ───────────────────────────────────────────────────────────────
+ * "Unsafe ERC-20 transfers — missing SafeERC20 wrapper"
+ *
+ * VULNERABILITY:
+ *   Bare IERC20Minimal.transfer() / transferFrom() calls fail to ABI-decode
+ *   the empty return payload from USDT-style tokens, reverting even when the
+ *   transfer succeeded. Also silently ignores false returns on failure.
+ *
+ * FIX:
+ *   - Replaced IERC20Minimal with OpenZeppelin IERC20 + SafeERC20
+ *   - All transfers now use safeTransfer / safeTransferFrom
+ *
  * ─── Finding #4 ───────────────────────────────────────────────────────────────
  * "Missing deadline enables stale transaction execution"
  *
@@ -185,6 +197,51 @@ contract ReentrancyAttacker is ITokenReceiver {
             totalLiquidityAtReentry = uint256(hook.totalLiquidity());
             hook.deposit(1 ether, 1 ether, 0, 0, 0.5 ether, type(uint256).max);
         }
+    }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+//  Finding #7 helper — USDT-style no-return-value ERC-20
+// ═════════════════════════════════════════════════════════════════════════════
+
+/// @dev ERC-20 whose transfer() and transferFrom() return nothing — exactly
+///      like USDT on mainnet. Calling these via IERC20Minimal (which expects
+///      a bool return) causes Solidity's ABI decoder to revert on the empty
+///      return payload even though the transfer succeeded.
+contract NoReturnERC20 {
+    string public name;
+    string public symbol;
+    uint8 public constant decimals = 18;
+    uint256 public totalSupply;
+    mapping(address => uint256) public balanceOf;
+    mapping(address => mapping(address => uint256)) public allowance;
+
+    constructor(string memory _name, string memory _symbol) {
+        name = _name;
+        symbol = _symbol;
+    }
+
+    function mint(address to, uint256 amount) external {
+        totalSupply += amount;
+        balanceOf[to] += amount;
+    }
+
+    function approve(address spender, uint256 amount) external returns (bool) {
+        allowance[msg.sender][spender] = amount;
+        return true;
+    }
+
+    function transfer(address to, uint256 amount) external {
+        balanceOf[msg.sender] -= amount;
+        balanceOf[to] += amount;
+    }
+
+    function transferFrom(address from, address to, uint256 amount) external {
+        if (allowance[from][msg.sender] != type(uint256).max) {
+            allowance[from][msg.sender] -= amount;
+        }
+        balanceOf[from] -= amount;
+        balanceOf[to] += amount;
     }
 }
 
@@ -566,5 +623,75 @@ contract Finding6MinSharesTest is Test, Deployers {
         vm.prank(alice);
         hook.deposit(1 ether, 1 ether, 0, 0, 0.5 ether, block.timestamp + 1 hours);
         assertGt(vaultShares.balanceOf(alice), 0, "shares must be minted");
+    }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+//  Finding #7 — SafeERC20
+// ═════════════════════════════════════════════════════════════════════════════
+
+contract Finding7SafeERC20Test is Test, Deployers {
+    CuratedVaultHook hook;
+    VaultShares vaultShares;
+    PoolKey hookKey;
+
+    NoReturnERC20 token0;
+    NoReturnERC20 token1;
+
+    address alice = makeAddr("alice");
+
+    function setUp() public {
+        deployFreshManagerAndRouters();
+
+        NoReturnERC20 tokenA = new NoReturnERC20("TokenA", "TKA");
+        NoReturnERC20 tokenB = new NoReturnERC20("TokenB", "TKB");
+        (token0, token1) = address(tokenA) < address(tokenB) ? (tokenA, tokenB) : (tokenB, tokenA);
+
+        uint160 flags = uint160(
+            Hooks.AFTER_INITIALIZE_FLAG
+                | Hooks.BEFORE_ADD_LIQUIDITY_FLAG
+                | Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG
+                | Hooks.BEFORE_SWAP_FLAG
+                | Hooks.AFTER_SWAP_FLAG
+        );
+        deployCodeTo("CuratedVaultHook.sol", abi.encode(manager), address(flags));
+        hook = CuratedVaultHook(address(flags));
+        vaultShares = hook.vaultShares();
+
+        hookKey = PoolKey({
+            currency0: Currency.wrap(address(token0)),
+            currency1: Currency.wrap(address(token1)),
+            fee: 0x800000,
+            tickSpacing: 60,
+            hooks: IHooks(address(hook))
+        });
+        manager.initialize(hookKey, TickMath.getSqrtPriceAtTick(0));
+
+        token0.mint(alice, 100 ether);
+        token1.mint(alice, 100 ether);
+        vm.startPrank(alice);
+        token0.approve(address(hook), type(uint256).max);
+        token1.approve(address(hook), type(uint256).max);
+        vm.stopPrank();
+    }
+
+    /// @notice Passes with SafeERC20 fix. Fails if bare IERC20Minimal is restored.
+    ///         Without fix: deposit() reverts on ABI-decode of the empty return
+    ///         from NoReturnERC20.transferFrom().
+    function test_finding7_depositWorksWithNoReturnToken() public {
+        vm.prank(alice);
+        hook.deposit(1 ether, 1 ether, 0, 0, 0.5 ether, block.timestamp + 1 hours);
+        assertGt(vaultShares.balanceOf(alice), 0, "deposit must succeed with no-return token");
+    }
+
+    /// @notice Passes with SafeERC20 fix. Fails if bare transfer() is restored.
+    function test_finding7_withdrawWorksWithNoReturnToken() public {
+        vm.prank(alice);
+        hook.deposit(1 ether, 1 ether, 0, 0, 0.5 ether, block.timestamp + 1 hours);
+        uint256 aliceShares = vaultShares.balanceOf(alice);
+
+        vm.prank(alice);
+        hook.withdraw(aliceShares, 0, 0, block.timestamp + 1 hours);
+        assertEq(vaultShares.balanceOf(alice), 0, "withdraw must succeed with no-return token");
     }
 }

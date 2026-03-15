@@ -11,6 +11,8 @@ import {StateLibrary} from "v4-core/src/libraries/StateLibrary.sol";
 import {TickMath} from "v4-core/src/libraries/TickMath.sol";
 import {IUnlockCallback} from "v4-core/src/interfaces/callback/IUnlockCallback.sol";
 import {IERC20Minimal} from "v4-core/src/interfaces/external/IERC20Minimal.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {SwapParams, ModifyLiquidityParams} from "v4-core/src/types/PoolOperation.sol";
 import {Hooks} from "v4-core/src/libraries/Hooks.sol";
 import {BaseHook} from "v4-hooks-public/src/base/BaseHook.sol";
@@ -27,6 +29,7 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
 contract CuratedVaultHook is BaseHook, IUnlockCallback, ReentrancyGuard {
     using PoolIdLibrary for PoolKey;
     using StateLibrary for IPoolManager;
+    using SafeERC20 for IERC20;
 
     error CuratedVaultHook_PoolNotInitialized();
     error CuratedVaultHook_DirectLiquidityNotAllowed();
@@ -297,10 +300,10 @@ contract CuratedVaultHook is BaseHook, IUnlockCallback, ReentrancyGuard {
 
         // ── Step 1: Transfer tokens from depositor to this hook ──────
         {
-            IERC20Minimal token0 = IERC20Minimal(Currency.unwrap(poolKey.currency0));
-            IERC20Minimal token1 = IERC20Minimal(Currency.unwrap(poolKey.currency1));
-            if (amount0Desired > 0) token0.transferFrom(msg.sender, address(this), amount0Desired);
-            if (amount1Desired > 0) token1.transferFrom(msg.sender, address(this), amount1Desired);
+            IERC20 token0 = IERC20(Currency.unwrap(poolKey.currency0));
+            IERC20 token1 = IERC20(Currency.unwrap(poolKey.currency1));
+            if (amount0Desired > 0) token0.safeTransferFrom(msg.sender, address(this), amount0Desired);
+            if (amount1Desired > 0) token1.safeTransferFrom(msg.sender, address(this), amount1Desired);
         }
 
         // ── Step 2: Calculate liquidity from deposited amounts ───────
@@ -355,10 +358,10 @@ contract CuratedVaultHook is BaseHook, IUnlockCallback, ReentrancyGuard {
 
         // ── Step 6: Refund unused tokens (interactions last) ─────────
         {
-            IERC20Minimal token0 = IERC20Minimal(Currency.unwrap(poolKey.currency0));
-            IERC20Minimal token1 = IERC20Minimal(Currency.unwrap(poolKey.currency1));
-            if (amount0Desired > amount0Used) token0.transfer(msg.sender, amount0Desired - amount0Used);
-            if (amount1Desired > amount1Used) token1.transfer(msg.sender, amount1Desired - amount1Used);
+            IERC20 token0 = IERC20(Currency.unwrap(poolKey.currency0));
+            IERC20 token1 = IERC20(Currency.unwrap(poolKey.currency1));
+            if (amount0Desired > amount0Used) token0.safeTransfer(msg.sender, amount0Desired - amount0Used);
+            if (amount1Desired > amount1Used) token1.safeTransfer(msg.sender, amount1Desired - amount1Used);
         }
     }
 
@@ -408,11 +411,11 @@ contract CuratedVaultHook is BaseHook, IUnlockCallback, ReentrancyGuard {
         vaultShares.burn(msg.sender, sharesToBurn);
 
         // ── Step 5: Transfer tokens to withdrawer ───────────────────
-        IERC20Minimal token0 = IERC20Minimal(Currency.unwrap(poolKey.currency0));
-        IERC20Minimal token1 = IERC20Minimal(Currency.unwrap(poolKey.currency1));
+        IERC20 token0 = IERC20(Currency.unwrap(poolKey.currency0));
+        IERC20 token1 = IERC20(Currency.unwrap(poolKey.currency1));
 
-        if (amount0 > 0) token0.transfer(msg.sender, amount0);
-        if (amount1 > 0) token1.transfer(msg.sender, amount1);
+        if (amount0 > 0) token0.safeTransfer(msg.sender, amount0);
+        if (amount1 > 0) token1.safeTransfer(msg.sender, amount1);
 
         emit Withdrawn(msg.sender, sharesToBurn, amount0, amount1);
     }
@@ -536,8 +539,8 @@ contract CuratedVaultHook is BaseHook, IUnlockCallback, ReentrancyGuard {
             // current token balances at the new tick range.
             (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(poolId);
 
-            IERC20Minimal token0 = IERC20Minimal(Currency.unwrap(poolKey.currency0));
-            IERC20Minimal token1 = IERC20Minimal(Currency.unwrap(poolKey.currency1));
+            IERC20 token0 = IERC20(Currency.unwrap(poolKey.currency0));
+            IERC20 token1 = IERC20(Currency.unwrap(poolKey.currency1));
 
             uint256 balance0 = token0.balanceOf(address(this));
             uint256 balance1 = token1.balanceOf(address(this));
@@ -630,10 +633,10 @@ contract CuratedVaultHook is BaseHook, IUnlockCallback, ReentrancyGuard {
     /// @dev Reverts if the hook's idle token balances exceed caller-specified maximums.
     ///      Extracted to avoid stack-too-deep in rebalance().
     function _checkIdleBalance(uint256 maxIdleToken0, uint256 maxIdleToken1) internal view {
-        if (IERC20Minimal(Currency.unwrap(poolKey.currency0)).balanceOf(address(this)) > maxIdleToken0) {
+        if (IERC20(Currency.unwrap(poolKey.currency0)).balanceOf(address(this)) > maxIdleToken0) {
             revert CuratedVaultHook_ExcessiveIdleBalance();
         }
-        if (IERC20Minimal(Currency.unwrap(poolKey.currency1)).balanceOf(address(this)) > maxIdleToken1) {
+        if (IERC20(Currency.unwrap(poolKey.currency1)).balanceOf(address(this)) > maxIdleToken1) {
             revert CuratedVaultHook_ExcessiveIdleBalance();
         }
     }
@@ -668,7 +671,7 @@ contract CuratedVaultHook is BaseHook, IUnlockCallback, ReentrancyGuard {
             uint256 amount = uint256(uint128(-delta));
             // sync() must be called before transferring ERC-20 tokens
             poolManager.sync(currency);
-            IERC20Minimal(Currency.unwrap(currency)).transfer(address(poolManager), amount);
+            IERC20(Currency.unwrap(currency)).safeTransfer(address(poolManager), amount);
             poolManager.settle();
         } else if (delta > 0) {
             // The pool owes us tokens. Take them.
@@ -741,8 +744,8 @@ contract CuratedVaultHook is BaseHook, IUnlockCallback, ReentrancyGuard {
 
     /// @notice Returns the total value of the vault in token terms.
     function totalAssets() external view returns (uint256 amount0, uint256 amount1) {
-        amount0 = IERC20Minimal(Currency.unwrap(poolKey.currency0)).balanceOf(address(this));
-        amount1 = IERC20Minimal(Currency.unwrap(poolKey.currency1)).balanceOf(address(this));
+        amount0 = IERC20(Currency.unwrap(poolKey.currency0)).balanceOf(address(this));
+        amount1 = IERC20(Currency.unwrap(poolKey.currency1)).balanceOf(address(this));
     }
 
     /// @notice Token addresses in the pool (sorted).
