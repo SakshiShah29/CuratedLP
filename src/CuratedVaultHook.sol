@@ -13,7 +13,7 @@ import {IUnlockCallback} from "v4-core/src/interfaces/callback/IUnlockCallback.s
 import {IERC20Minimal} from "v4-core/src/interfaces/external/IERC20Minimal.sol";
 import {SwapParams, ModifyLiquidityParams} from "v4-core/src/types/PoolOperation.sol";
 import {Hooks} from "v4-core/src/libraries/Hooks.sol";
-import {BaseHook} from "v4-periphery/src/base/BaseHook.sol";
+import {BaseHook} from "v4-hooks-public/src/base/BaseHook.sol";
 import {VaultShares} from "./VaultShares.sol";
 import {LPFeeLibrary} from "v4-core/src/libraries/LPFeeLibrary.sol";
 import {IIdentityRegistry} from "./interfaces/IIdentityRegistry.sol";

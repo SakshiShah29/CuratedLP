@@ -9,7 +9,7 @@ import {IHooks} from "v4-core/src/interfaces/IHooks.sol";
 import {Hooks} from "v4-core/src/libraries/Hooks.sol";
 import {TickMath} from "v4-core/src/libraries/TickMath.sol";
 import {CuratedVaultHook} from "../src/CuratedVaultHook.sol";
-import {HookMiner} from "v4-periphery/src/utils/HookMiner.sol";
+import {HookMiner} from "v4-hooks-public/src/utils/HookMiner.sol";
 import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
 
 contract DeployScript is Script {
