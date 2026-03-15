@@ -299,11 +299,17 @@ contract CuratedVaultHook is BaseHook, IUnlockCallback, ReentrancyGuard {
         if (amount0Desired == 0 && amount1Desired == 0) revert CuratedVaultHook_ZeroDeposit();
 
         // ── Step 1: Transfer tokens from depositor to this hook ──────
+        //           Measure before/after balances to get actual received amounts,
+        //           which may be less than desired for fee-on-transfer tokens.
         {
             IERC20 token0 = IERC20(Currency.unwrap(poolKey.currency0));
             IERC20 token1 = IERC20(Currency.unwrap(poolKey.currency1));
+            uint256 bal0Before = token0.balanceOf(address(this));
+            uint256 bal1Before = token1.balanceOf(address(this));
             if (amount0Desired > 0) token0.safeTransferFrom(msg.sender, address(this), amount0Desired);
             if (amount1Desired > 0) token1.safeTransferFrom(msg.sender, address(this), amount1Desired);
+            amount0Desired = token0.balanceOf(address(this)) - bal0Before;
+            amount1Desired = token1.balanceOf(address(this)) - bal1Before;
         }
 
         // ── Step 2: Calculate liquidity from deposited amounts ───────

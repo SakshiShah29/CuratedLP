@@ -69,6 +69,20 @@ pragma solidity ^0.8.26;
  * FIX:
  *   - minShares parameter added to deposit()
  *   - Reverts with CuratedVaultHook_SlippageExceeded if shares < minShares
+ *
+ * ─── Finding #8 ───────────────────────────────────────────────────────────────
+ * "Fee-on-transfer token accounting mismatch drains hook balance"
+ *
+ * VULNERABILITY:
+ *   deposit() called transferFrom(msg.sender, address(this), amount0Desired)
+ *   then passed amount0Desired directly to the PoolManager settlement. With a
+ *   fee-on-transfer token the hook receives (amount0Desired - fee) but tries to
+ *   settle the full amount0Desired — either reverting (DoS) or, if the hook
+ *   already holds a prior balance, silently consuming other depositors' funds.
+ *
+ * FIX:
+ *   Measure the hook's balance before and after transferFrom; use the delta
+ *   (actual received amount) instead of the desired amount.
  */
 
 import "forge-std/Test.sol";
@@ -693,5 +707,138 @@ contract Finding7SafeERC20Test is Test, Deployers {
         vm.prank(alice);
         hook.withdraw(aliceShares, 0, 0, block.timestamp + 1 hours);
         assertEq(vaultShares.balanceOf(alice), 0, "withdraw must succeed with no-return token");
+    }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+//  Finding #8 helper — fee-on-transfer ERC-20 (buy-side tax, hook exempt)
+// ═════════════════════════════════════════════════════════════════════════════
+
+/// @dev ERC-20 that deducts a 1% fee on every transfer FROM a non-exempt sender.
+///      The hook address is set as exempt so the hook pays no fee on outbound
+///      transfers (models "buy-tax" tokens that whitelist vault/protocol contracts).
+///
+///      Scenario:
+///        alice → hook  : hook receives amount - 1%  (alice is non-exempt)
+///        hook → poolMgr: pool receives full amount    (hook is exempt)
+contract FeeOnTransferERC20 {
+    string public name;
+    string public symbol;
+    uint8 public constant decimals = 18;
+    uint256 public totalSupply;
+    mapping(address => uint256) public balanceOf;
+    mapping(address => mapping(address => uint256)) public allowance;
+
+    uint256 public constant FEE_BPS = 100; // 1%
+
+    /// @dev Set to the hook address after deployment so the hook pays no fee.
+    address public hookAddress;
+
+    constructor(string memory _name, string memory _symbol) {
+        name = _name;
+        symbol = _symbol;
+    }
+
+    function setHookAddress(address _hook) external {
+        hookAddress = _hook;
+    }
+
+    function mint(address to, uint256 amount) external {
+        totalSupply += amount;
+        balanceOf[to] += amount;
+    }
+
+    function approve(address spender, uint256 amount) external returns (bool) {
+        allowance[msg.sender][spender] = amount;
+        return true;
+    }
+
+    function transfer(address to, uint256 amount) external returns (bool) {
+        return _transfer(msg.sender, to, amount);
+    }
+
+    function transferFrom(address from, address to, uint256 amount) external returns (bool) {
+        if (allowance[from][msg.sender] != type(uint256).max) {
+            allowance[from][msg.sender] -= amount;
+        }
+        return _transfer(from, to, amount);
+    }
+
+    function _transfer(address from, address to, uint256 amount) internal returns (bool) {
+        balanceOf[from] -= amount;
+        if (from != hookAddress) {
+            uint256 fee = (amount * FEE_BPS) / 10_000;
+            balanceOf[to] += amount - fee;
+            // fee stays in contract (burned/collected)
+        } else {
+            balanceOf[to] += amount;
+        }
+        return true;
+    }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+//  Finding #8 — Fee-on-transfer token accounting
+// ═════════════════════════════════════════════════════════════════════════════
+
+contract Finding8FeeOnTransferTest is Test, Deployers {
+    CuratedVaultHook hook;
+    VaultShares vaultShares;
+    PoolKey hookKey;
+
+    FeeOnTransferERC20 feeToken;
+    MockERC20 stableToken;
+
+    address alice = makeAddr("alice");
+
+    function setUp() public {
+        deployFreshManagerAndRouters();
+
+        feeToken = new FeeOnTransferERC20("FeeToken", "FTK");
+        stableToken = new MockERC20("StableToken", "STB", 18);
+
+        (Currency currency0, Currency currency1) = address(feeToken) < address(stableToken)
+            ? (Currency.wrap(address(feeToken)), Currency.wrap(address(stableToken)))
+            : (Currency.wrap(address(stableToken)), Currency.wrap(address(feeToken)));
+
+        uint160 flags = uint160(
+            Hooks.AFTER_INITIALIZE_FLAG
+                | Hooks.BEFORE_ADD_LIQUIDITY_FLAG
+                | Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG
+                | Hooks.BEFORE_SWAP_FLAG
+                | Hooks.AFTER_SWAP_FLAG
+        );
+        deployCodeTo("CuratedVaultHook.sol", abi.encode(manager), address(flags));
+        hook = CuratedVaultHook(address(flags));
+        vaultShares = hook.vaultShares();
+
+        // Exempt the hook from outbound fees — models a "buy-tax" whitelist.
+        feeToken.setHookAddress(address(hook));
+
+        hookKey = PoolKey({
+            currency0: currency0,
+            currency1: currency1,
+            fee: 0x800000,
+            tickSpacing: 60,
+            hooks: IHooks(address(hook))
+        });
+        manager.initialize(hookKey, TickMath.getSqrtPriceAtTick(0));
+
+        feeToken.mint(alice, 100 ether);
+        stableToken.mint(alice, 100 ether);
+        vm.startPrank(alice);
+        feeToken.approve(address(hook), type(uint256).max);
+        stableToken.approve(address(hook), type(uint256).max);
+        vm.stopPrank();
+    }
+
+    /// @notice FAILS without fix: deposit() passes amount0/1Desired (10 ETH) to the
+    ///         pool but the hook received only 9.9 ETH — safeTransfer reverts with
+    ///         arithmetic underflow (insufficient hook balance).
+    ///         PASSES after fix: deposit() uses actual received balance (9.9 ETH).
+    function test_finding8_depositWorksWithFeeOnTransferToken() public {
+        vm.prank(alice);
+        hook.deposit(10 ether, 10 ether, 0, 0, 0.5 ether, block.timestamp + 1 hours);
+        assertGt(vaultShares.balanceOf(alice), 0, "deposit must succeed with fee-on-transfer token");
     }
 }
