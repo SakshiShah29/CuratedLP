@@ -45,6 +45,7 @@ contract CuratedVaultHook is BaseHook, IUnlockCallback, ReentrancyGuard {
     error CuratedVaultHook_RebalanceTooFrequent();
     error CuratedVaultHook_IdentityNotOwned();
     error CuratedVaultHook_NoCuratorSet();
+    error CuratedVaultHook_ExcessiveIdleBalance();
 
     event Deposited(address indexed depositor, uint256 amount0, uint256 amount1, uint256 shares);
     event Withdrawn(address indexed withdrawer, uint256 shares, uint256 amount0, uint256 amount1);
@@ -466,7 +467,18 @@ contract CuratedVaultHook is BaseHook, IUnlockCallback, ReentrancyGuard {
     /// @param newTickLower New lower tick boundary (must be aligned to tickSpacing).
     /// @param newTickUpper New upper tick boundary (must be aligned to tickSpacing).
     /// @param newFee New swap fee in hundredths of a bip (e.g., 3000 = 0.30%).
-    function rebalance(int24 newTickLower, int24 newTickUpper, uint24 newFee) external nonReentrant {
+    /// @param maxIdleToken0 Maximum amount of token0 allowed to remain undeployed after rebalance.
+    ///        Reverts if the actual idle token0 exceeds this value.
+    ///        Pass type(uint256).max to skip the check.
+    /// @param maxIdleToken1 Maximum amount of token1 allowed to remain undeployed after rebalance.
+    ///        Pass type(uint256).max to skip the check.
+    function rebalance(
+        int24 newTickLower,
+        int24 newTickUpper,
+        uint24 newFee,
+        uint256 maxIdleToken0,
+        uint256 maxIdleToken1
+    ) external nonReentrant {
         if (!poolInitialized) revert CuratedVaultHook_PoolNotInitialized();
 
         // ── Check 1: Caller is the active curator ────────────────────
@@ -538,6 +550,12 @@ contract CuratedVaultHook is BaseHook, IUnlockCallback, ReentrancyGuard {
             } else {
                 totalLiquidity = 0;
             }
+
+            // ── Idle balance check ───────────────────────────────────
+            // Reverts if more tokens remain undeployed than the caller allows.
+            // Sandwich attacks that move the price outside the new tick range
+            // leave one token entirely idle; this check catches that.
+            _checkIdleBalance(maxIdleToken0, maxIdleToken1);
         }
 
         emit FeeUpdated(oldFee, newFee);
@@ -598,6 +616,17 @@ contract CuratedVaultHook is BaseHook, IUnlockCallback, ReentrancyGuard {
     // ═════════════════════════════════════════════════════════════════════
     //                      INTERNAL HELPERS
     // ═════════════════════════════════════════════════════════════════════
+
+    /// @dev Reverts if the hook's idle token balances exceed caller-specified maximums.
+    ///      Extracted to avoid stack-too-deep in rebalance().
+    function _checkIdleBalance(uint256 maxIdleToken0, uint256 maxIdleToken1) internal view {
+        if (IERC20Minimal(Currency.unwrap(poolKey.currency0)).balanceOf(address(this)) > maxIdleToken0) {
+            revert CuratedVaultHook_ExcessiveIdleBalance();
+        }
+        if (IERC20Minimal(Currency.unwrap(poolKey.currency1)).balanceOf(address(this)) > maxIdleToken1) {
+            revert CuratedVaultHook_ExcessiveIdleBalance();
+        }
+    }
 
     /// @dev Calls poolManager.unlock() with encoded callback data.
     ///      Returns the actual token amounts consumed/returned.

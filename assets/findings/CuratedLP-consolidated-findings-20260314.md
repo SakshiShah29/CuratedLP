@@ -71,7 +71,7 @@
 
 ---
 
-### 2. ⭐ First-Caller Auto-Activation Lets Attacker Seize Active Curator Role
+### 2. ⭐ First-Caller Auto-Activation Lets Attacker Seize Active Curator Role ⚠️ DISCUSSION PENDING
 
 **Sources:** [A] Finding #2 [85] · [B] Checklist item #8 PARTIAL · [C] Solodit OZ `BaseDynamicFee` prior art
 **Location:** `CuratedVaultHook.registerCurator` · lines 588–590

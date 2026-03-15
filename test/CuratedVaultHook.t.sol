@@ -390,7 +390,7 @@ function test_rebalance() public {
 
     // Rebalance to a tighter range with a higher fee
     vm.prank(alice);
-    hook.rebalance(-600, 600, 5000); // [-600, 600] range, 0.50% fee
+    hook.rebalance(-600, 600, 5000, type(uint256).max, type(uint256).max); // [-600, 600] range, 0.50% fee
 
     assertEq(hook.currentTickLower(), -600);
     assertEq(hook.currentTickUpper(), 600);
@@ -411,7 +411,7 @@ function test_rebalanceByNonCuratorReverts() public {
     // Bob is not the curator
     vm.prank(bob);
     vm.expectRevert(CuratedVaultHook.CuratedVaultHook_OnlyCurator.selector);
-    hook.rebalance(-600, 600, 5000);
+    hook.rebalance(-600, 600, 5000, 0, 0);
 }
 
 // ─── Test: Rebalance too frequent reverts ────────────────────────
@@ -426,12 +426,12 @@ function test_rebalanceTooFrequentReverts() public {
 
     // First rebalance succeeds
     vm.prank(alice);
-    hook.rebalance(-600, 600, 5000);
+    hook.rebalance(-600, 600, 5000, type(uint256).max, type(uint256).max);
 
     // Immediate second rebalance fails
     vm.prank(alice);
     vm.expectRevert(CuratedVaultHook.CuratedVaultHook_RebalanceTooFrequent.selector);
-    hook.rebalance(-1200, 1200, 3000);
+    hook.rebalance(-1200, 1200, 3000, 0, 0);
 }
 
 // ─── Test: Fee changes visible between swaps ─────────────────────
@@ -469,7 +469,7 @@ function test_feeChangesBetweenSwaps() public {
     // Curator rebalances with higher fee
     vm.roll(block.number + 31);
     vm.prank(alice);
-    hook.rebalance(-600, 600, 10000); // 1.00% fee
+    hook.rebalance(-600, 600, 10000, type(uint256).max, type(uint256).max); // 1.00% fee
 
     // Swap 2 at 1.00% fee
     vm.startPrank(swapper);
@@ -512,12 +512,12 @@ function test_invalidTickRangeReverts() public {
     // tickLower >= tickUpper
     vm.prank(alice);
     vm.expectRevert(CuratedVaultHook.CuratedVaultHook_InvalidTickRange.selector);
-    hook.rebalance(600, -600, 3000);
+    hook.rebalance(600, -600, 3000, 0, 0);
 
     // Ticks not aligned to tickSpacing (60)
     vm.prank(alice);
     vm.expectRevert(CuratedVaultHook.CuratedVaultHook_InvalidTickRange.selector);
-    hook.rebalance(-601, 600, 3000);
+    hook.rebalance(-601, 600, 3000, 0, 0);
 }
 
 // ─── Test: Invalid fee reverts ───────────────────────────────────
@@ -533,13 +533,13 @@ function test_invalidFeeReverts() public {
     // Fee = 0
     vm.prank(alice);
     vm.expectRevert(CuratedVaultHook.CuratedVaultHook_InvalidFee.selector);
-    hook.rebalance(-600, 600, 0);
+    hook.rebalance(-600, 600, 0, 0, 0);
 
     // Fee > MAX_FEE
     vm.roll(block.number + 31);
     vm.prank(alice);
     vm.expectRevert(CuratedVaultHook.CuratedVaultHook_InvalidFee.selector);
-    hook.rebalance(-600, 600, 100001);
+    hook.rebalance(-600, 600, 100001, 0, 0);
 }
 
 // ─── Test: Deposit + Rebalance + Swap + Withdraw full cycle ──────
@@ -560,7 +560,7 @@ function test_fullCycleWithCurator() public {
     // Curator rebalances
     vm.roll(block.number + 31);
     vm.prank(alice);
-    hook.rebalance(-1200, 1200, 5000);
+    hook.rebalance(-1200, 1200, 5000, type(uint256).max, type(uint256).max);
 
     // Someone swaps
     address swapper = makeAddr("swapper");
