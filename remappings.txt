@@ -10,3 +10,4 @@ v4-periphery/src/utils/BaseHook.sol=lib/v4-hooks-public/src/base/BaseHook.sol
 
 solmate/=lib/v4-core/lib/solmate/
 permit2/=lib/v4-periphery/lib/permit2/
+hookmate/=lib/hookmate/src/

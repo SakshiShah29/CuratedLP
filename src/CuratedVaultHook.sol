@@ -13,17 +13,18 @@ import {IUnlockCallback} from "v4-core/src/interfaces/callback/IUnlockCallback.s
 import {IERC20Minimal} from "v4-core/src/interfaces/external/IERC20Minimal.sol";
 import {SwapParams, ModifyLiquidityParams} from "v4-core/src/types/PoolOperation.sol";
 import {Hooks} from "v4-core/src/libraries/Hooks.sol";
-import {BaseHook} from "v4-periphery/src/utils/BaseHook.sol";
+import {BaseHook} from "v4-periphery/src/base/BaseHook.sol";
 import {VaultShares} from "./VaultShares.sol";
 import {LPFeeLibrary} from "v4-core/src/libraries/LPFeeLibrary.sol";
 import {IIdentityRegistry} from "./interfaces/IIdentityRegistry.sol";
 import {IReputationRegistry} from "./interfaces/IReputationRegistry.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 /// @title CuratedVaultHook
 /// @notice Uniswap v4 hook that manages a concentrated liquidity vault.
 ///         LPs deposit tokens and receive vault shares. A curator agent
 ///         manages the tick range and fee. All liquidity is owned by this hook.
-contract CuratedVaultHook is BaseHook, IUnlockCallback {
+contract CuratedVaultHook is BaseHook, IUnlockCallback, ReentrancyGuard {
     using PoolIdLibrary for PoolKey;
     using StateLibrary for IPoolManager;
 
@@ -280,6 +281,7 @@ contract CuratedVaultHook is BaseHook, IUnlockCallback {
     /// @return shares Number of vault shares minted.
     function deposit(uint256 amount0Desired, uint256 amount1Desired, uint256 amount0Min, uint256 amount1Min)
         external
+        nonReentrant
         returns (uint256 shares)
     {
         if (!poolInitialized) revert CuratedVaultHook_PoolNotInitialized();
@@ -323,15 +325,7 @@ contract CuratedVaultHook is BaseHook, IUnlockCallback {
             revert CuratedVaultHook_SlippageExceeded();
         }
 
-        // ── Step 5: Refund unused tokens ────────────────────────────
-        {
-            IERC20Minimal token0 = IERC20Minimal(Currency.unwrap(poolKey.currency0));
-            IERC20Minimal token1 = IERC20Minimal(Currency.unwrap(poolKey.currency1));
-            if (amount0Desired > amount0Used) token0.transfer(msg.sender, amount0Desired - amount0Used);
-            if (amount1Desired > amount1Used) token1.transfer(msg.sender, amount1Desired - amount1Used);
-        }
-
-        // ── Step 6: Compute and mint shares ─────────────────────────
+        // ── Step 5: Compute and mint shares (CEI: state before external calls) ──
         uint256 currentTotalShares = vaultShares.totalSupply();
 
         if (currentTotalShares == 0) {
@@ -349,6 +343,14 @@ contract CuratedVaultHook is BaseHook, IUnlockCallback {
         vaultShares.mint(msg.sender, shares);
 
         emit Deposited(msg.sender, amount0Used, amount1Used, shares);
+
+        // ── Step 6: Refund unused tokens (interactions last) ─────────
+        {
+            IERC20Minimal token0 = IERC20Minimal(Currency.unwrap(poolKey.currency0));
+            IERC20Minimal token1 = IERC20Minimal(Currency.unwrap(poolKey.currency1));
+            if (amount0Desired > amount0Used) token0.transfer(msg.sender, amount0Desired - amount0Used);
+            if (amount1Desired > amount1Used) token1.transfer(msg.sender, amount1Desired - amount1Used);
+        }
     }
 
     // ═════════════════════════════════════════════════════════════════════
@@ -363,6 +365,7 @@ contract CuratedVaultHook is BaseHook, IUnlockCallback {
     /// @return amount1 Tokens returned to withdrawer.
     function withdraw(uint256 sharesToBurn, uint256 amount0Min, uint256 amount1Min)
         external
+        nonReentrant
         returns (uint256 amount0, uint256 amount1)
     {
         if (!poolInitialized) revert CuratedVaultHook_PoolNotInitialized();
@@ -463,7 +466,7 @@ contract CuratedVaultHook is BaseHook, IUnlockCallback {
     /// @param newTickLower New lower tick boundary (must be aligned to tickSpacing).
     /// @param newTickUpper New upper tick boundary (must be aligned to tickSpacing).
     /// @param newFee New swap fee in hundredths of a bip (e.g., 3000 = 0.30%).
-    function rebalance(int24 newTickLower, int24 newTickUpper, uint24 newFee) external {
+    function rebalance(int24 newTickLower, int24 newTickUpper, uint24 newFee) external nonReentrant {
         if (!poolInitialized) revert CuratedVaultHook_PoolNotInitialized();
 
         // ── Check 1: Caller is the active curator ────────────────────
