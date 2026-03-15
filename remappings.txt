@@ -10,3 +10,5 @@ v4-hooks-public/=lib/v4-hooks-public/
 solmate/=lib/v4-core/lib/solmate/
 permit2/=lib/v4-periphery/lib/permit2/
 hookmate/=lib/hookmate/src/
+
+@delegator/=lib/delegation-framework/
