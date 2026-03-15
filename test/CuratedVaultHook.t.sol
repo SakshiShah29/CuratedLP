@@ -127,7 +127,7 @@ contract CuratedVaultHookTest is Test, Deployers {
         vm.startPrank(alice);
         uint256 sharesBefore = shares.balanceOf(alice);
 
-        hook.deposit(1 ether, 1 ether, 0, 0);
+        hook.deposit(1 ether, 1 ether, 0, 0, 0.5 ether, type(uint256).max);
 
         uint256 sharesAfter = shares.balanceOf(alice);
         assertGt(sharesAfter, sharesBefore);
@@ -144,12 +144,12 @@ contract CuratedVaultHookTest is Test, Deployers {
         uint256 bal0Before = token0.balanceOf(alice);
         uint256 bal1Before = token1.balanceOf(alice);
 
-        hook.deposit(1 ether, 1 ether, 0, 0);
+        hook.deposit(1 ether, 1 ether, 0, 0, 0.5 ether, type(uint256).max);
         uint256 aliceShares = shares.balanceOf(alice);
         assertGt(aliceShares, 0);
 
         // Withdraw all shares
-        hook.withdraw(aliceShares, 0, 0);
+        hook.withdraw(aliceShares, 0, 0, type(uint256).max);
 
         uint256 bal0After = token0.balanceOf(alice);
         uint256 bal1After = token1.balanceOf(alice);
@@ -168,12 +168,12 @@ contract CuratedVaultHookTest is Test, Deployers {
     function test_twoDepositors() public {
         // Alice deposits first
         vm.prank(alice);
-        hook.deposit(1 ether, 1 ether, 0, 0);
+        hook.deposit(1 ether, 1 ether, 0, 0, 0.5 ether, type(uint256).max);
         uint256 aliceShares = shares.balanceOf(alice);
 
         // Bob deposits same amount
         vm.prank(bob);
-        hook.deposit(1 ether, 1 ether, 0, 0);
+        hook.deposit(1 ether, 1 ether, 0, 0, 0.5 ether, type(uint256).max);
         uint256 bobShares = shares.balanceOf(bob);
 
         // Bob should get approximately the same shares as Alice
@@ -186,7 +186,7 @@ contract CuratedVaultHookTest is Test, Deployers {
     function test_swapWorksAfterDeposit() public {
         // First, deposit liquidity so swaps have something to route through
         vm.prank(alice);
-        hook.deposit(10 ether, 10 ether, 0, 0);
+        hook.deposit(10 ether, 10 ether, 0, 0, 5 ether, type(uint256).max);
 
         // Fund swapper and approve
         address swapper = makeAddr("swapper");
@@ -220,7 +220,7 @@ contract CuratedVaultHookTest is Test, Deployers {
     function test_zeroDepositReverts() public {
         vm.prank(alice);
         vm.expectRevert(CuratedVaultHook.CuratedVaultHook_ZeroDeposit.selector);
-        hook.deposit(0, 0, 0, 0);
+        hook.deposit(0, 0, 0, 0, 0, type(uint256).max);
     }
 
     // ─── Test: Withdraw more than balance reverts ────────────────────
@@ -228,7 +228,7 @@ contract CuratedVaultHookTest is Test, Deployers {
     function test_withdrawMoreThanBalanceReverts() public {
         vm.prank(alice);
         vm.expectRevert(CuratedVaultHook.CuratedVaultHook_InsufficientShares.selector);
-        hook.withdraw(1 ether, 0, 0);
+        hook.withdraw(1 ether, 0, 0, type(uint256).max);
     }
 
     function test_registerCurator() public {
@@ -329,7 +329,7 @@ function test_dynamicFeeApplied() public {
 
     // Deposit liquidity
     vm.prank(alice);
-    hook.deposit(10 ether, 10 ether, 0, 0);
+    hook.deposit(10 ether, 10 ether, 0, 0, 5 ether, type(uint256).max);
 
     // The fee should be DEFAULT_FEE (3000 = 0.30%)
     assertEq(hook.getCurrentFee(), 3000);
@@ -378,7 +378,7 @@ function test_rebalance() public {
     _registerAliceAsCurator();
 
     vm.prank(alice);
-    hook.deposit(10 ether, 10 ether, 0, 0);
+    hook.deposit(10 ether, 10 ether, 0, 0, 5 ether, type(uint256).max);
 
     // Check initial state
     assertEq(hook.currentTickLower(), -887220);
@@ -404,7 +404,7 @@ function test_rebalanceByNonCuratorReverts() public {
     _registerAliceAsCurator();
 
     vm.prank(alice);
-    hook.deposit(10 ether, 10 ether, 0, 0);
+    hook.deposit(10 ether, 10 ether, 0, 0, 5 ether, type(uint256).max);
 
     vm.roll(block.number + 31);
 
@@ -420,7 +420,7 @@ function test_rebalanceTooFrequentReverts() public {
     _registerAliceAsCurator();
 
     vm.prank(alice);
-    hook.deposit(10 ether, 10 ether, 0, 0);
+    hook.deposit(10 ether, 10 ether, 0, 0, 5 ether, type(uint256).max);
 
     vm.roll(block.number + 31);
 
@@ -440,7 +440,7 @@ function test_feeChangesBetweenSwaps() public {
     _registerAliceAsCurator();
 
     vm.prank(alice);
-    hook.deposit(10 ether, 10 ether, 0, 0);
+    hook.deposit(10 ether, 10 ether, 0, 0, 5 ether, type(uint256).max);
 
     // Swap 1 at 0.30% fee
     address swapper = makeAddr("swapper");
@@ -505,7 +505,7 @@ function test_invalidTickRangeReverts() public {
     _registerAliceAsCurator();
 
     vm.prank(alice);
-    hook.deposit(10 ether, 10 ether, 0, 0);
+    hook.deposit(10 ether, 10 ether, 0, 0, 5 ether, type(uint256).max);
 
     vm.roll(block.number + 31);
 
@@ -526,7 +526,7 @@ function test_invalidFeeReverts() public {
     _registerAliceAsCurator();
 
     vm.prank(alice);
-    hook.deposit(10 ether, 10 ether, 0, 0);
+    hook.deposit(10 ether, 10 ether, 0, 0, 5 ether, type(uint256).max);
 
     vm.roll(block.number + 31);
 
@@ -549,13 +549,13 @@ function test_fullCycleWithCurator() public {
 
     // Alice deposits
     vm.prank(alice);
-    hook.deposit(5 ether, 5 ether, 0, 0);
+    hook.deposit(5 ether, 5 ether, 0, 0, 2.5 ether, type(uint256).max);
     uint256 aliceShares = hook.vaultShares().balanceOf(alice);
     assertGt(aliceShares, 0);
 
     // Bob deposits
     vm.prank(bob);
-    hook.deposit(5 ether, 5 ether, 0, 0);
+    hook.deposit(5 ether, 5 ether, 0, 0, 2.5 ether, type(uint256).max);
 
     // Curator rebalances
     vm.roll(block.number + 31);
@@ -589,13 +589,13 @@ function test_fullCycleWithCurator() public {
 
     // Alice withdraws
     vm.prank(alice);
-    hook.withdraw(aliceShares, 0, 0);
+    hook.withdraw(aliceShares, 0, 0, type(uint256).max);
     assertEq(hook.vaultShares().balanceOf(alice), 0);
 
     // Bob withdraws
     uint256 bobShares = hook.vaultShares().balanceOf(bob);
     vm.prank(bob);
-    hook.withdraw(bobShares, 0, 0);
+    hook.withdraw(bobShares, 0, 0, type(uint256).max);
     assertEq(hook.vaultShares().balanceOf(bob), 0);
 }
 }

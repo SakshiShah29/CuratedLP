@@ -93,7 +93,7 @@ contract DeployScript is Script {
         token0.approve(address(hook), depositAmount);
         token1.approve(address(hook), depositAmount);
 
-        uint256 shares = hook.deposit(depositAmount, depositAmount, 0, 0);
+        uint256 shares = hook.deposit(depositAmount, depositAmount, 0, 0, 0, type(uint256).max);
         console.log("Initial deposit complete, shares:", shares);
 
         vm.stopBroadcast();

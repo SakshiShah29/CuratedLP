@@ -33,6 +33,30 @@ pragma solidity ^0.8.26;
  *   - maxIdleToken0 and maxIdleToken1 parameters added to rebalance()
  *   - After re-deployment, _checkIdleBalance() reverts if idle balances exceed limits
  *   - Curators pass 0 for strict protection, type(uint256).max to opt out
+ *
+ * ─── Finding #4 ───────────────────────────────────────────────────────────────
+ * "Missing deadline enables stale transaction execution"
+ *
+ * VULNERABILITY:
+ *   deposit() and withdraw() had no deadline parameter. A transaction submitted
+ *   at time T could be mined at T+N after a curator rebalance had moved the
+ *   active tick range, adding/removing liquidity in the wrong range.
+ *
+ * FIX:
+ *   - deadline parameter added to deposit() and withdraw()
+ *   - Reverts with CuratedVaultHook_DeadlineExpired if block.timestamp > deadline
+ *
+ * ─── Finding #6 ───────────────────────────────────────────────────────────────
+ * "Missing minShares allows silent share dilution"
+ *
+ * VULNERABILITY:
+ *   deposit() enforced amount0Min/amount1Min but not share-output slippage.
+ *   A front-runner inflating totalLiquidity caused the victim to receive far
+ *   fewer shares than expected with no way to revert.
+ *
+ * FIX:
+ *   - minShares parameter added to deposit()
+ *   - Reverts with CuratedVaultHook_SlippageExceeded if shares < minShares
  */
 
 import "forge-std/Test.sol";
@@ -147,9 +171,9 @@ contract ReentrancyAttacker is ITokenReceiver {
         (Currency c0,,,,) = hook.poolKey();
         bool cbIsCurrency0 = address(callbackToken) == Currency.unwrap(c0);
         if (cbIsCurrency0) {
-            hook.deposit(2 ether, 1 ether, 0, 0);
+            hook.deposit(2 ether, 1 ether, 0, 0, 0.5 ether, type(uint256).max);
         } else {
-            hook.deposit(1 ether, 2 ether, 0, 0);
+            hook.deposit(1 ether, 2 ether, 0, 0, 0.5 ether, type(uint256).max);
         }
         _active = false;
     }
@@ -159,7 +183,7 @@ contract ReentrancyAttacker is ITokenReceiver {
             reentrancyOccurred = true;
             totalSupplyAtReentry = hook.vaultShares().totalSupply();
             totalLiquidityAtReentry = uint256(hook.totalLiquidity());
-            hook.deposit(1 ether, 1 ether, 0, 0);
+            hook.deposit(1 ether, 1 ether, 0, 0, 0.5 ether, type(uint256).max);
         }
     }
 }
@@ -231,7 +255,7 @@ contract Finding1ReentrancyTest is Test, Deployers {
     ///         in CallbackERC20, rolling back reentrancyOccurred to false.
     function test_finding1_nonReentrantGuardBlocksReentry() public {
         vm.prank(alice);
-        hook.deposit(5 ether, 5 ether, 0, 0);
+        hook.deposit(5 ether, 5 ether, 0, 0, 0, type(uint256).max);
 
         attacker.attack();
 
@@ -246,7 +270,7 @@ contract Finding1ReentrancyTest is Test, Deployers {
     ///         correctly reflects only the legitimate deposits.
     function test_finding1_noStaleTotalLiquidityWindow() public {
         vm.prank(alice);
-        hook.deposit(10 ether, 10 ether, 0, 0);
+        hook.deposit(10 ether, 10 ether, 0, 0, 5 ether, type(uint256).max);
 
         uint256 liquidityAfterAlice = hook.totalLiquidity();
 
@@ -342,7 +366,7 @@ contract Finding3RebalanceSandwichTest is Test, Deployers {
     ///         succeeds and leaves token0 stranded idle in the hook.
     function test_finding3_token0StrandedWhenProtectionOptedOut() public {
         vm.prank(alice);
-        hook.deposit(100 ether, 100 ether, 0, 0);
+        hook.deposit(100 ether, 100 ether, 0, 0, 50 ether, type(uint256).max);
 
         _manipulatePriceUp();
 
@@ -359,7 +383,7 @@ contract Finding3RebalanceSandwichTest is Test, Deployers {
     ///         token0 cannot be deployed to [-600, 600] when price > tick 600.
     function test_finding3_idleBalanceCheckBlocksSandwich() public {
         vm.prank(alice);
-        hook.deposit(100 ether, 100 ether, 0, 0);
+        hook.deposit(100 ether, 100 ether, 0, 0, 50 ether, type(uint256).max);
 
         _manipulatePriceUp();
 
@@ -373,7 +397,7 @@ contract Finding3RebalanceSandwichTest is Test, Deployers {
     ///         when price is inside the new range.
     function test_finding3_cleanRebalanceSucceedsWithStrictProtection() public {
         vm.prank(alice);
-        hook.deposit(100 ether, 100 ether, 0, 0);
+        hook.deposit(100 ether, 100 ether, 0, 0, 50 ether, type(uint256).max);
 
         // No price manipulation — price stays at tick 0, inside [-600, 600].
         // Both tokens are deployable, so idle balances are 0 after rebalance.
@@ -384,5 +408,163 @@ contract Finding3RebalanceSandwichTest is Test, Deployers {
         assertEq(idleToken0, 0, "no token0 idle after clean rebalance");
         assertEq(idleToken1, 0, "no token1 idle after clean rebalance");
         assertGt(hook.totalLiquidity(), 0, "liquidity deployed");
+    }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+//  Finding #4 — Deadline
+// ═════════════════════════════════════════════════════════════════════════════
+
+contract Finding4DeadlineTest is Test, Deployers {
+    CuratedVaultHook hook;
+    VaultShares vaultShares;
+    PoolKey hookKey;
+
+    MockERC20 token0;
+    MockERC20 token1;
+
+    address alice = makeAddr("alice");
+
+    function setUp() public {
+        deployFreshManagerAndRouters();
+
+        MockERC20 tokenA = new MockERC20("TokenA", "TKA", 18);
+        MockERC20 tokenB = new MockERC20("TokenB", "TKB", 18);
+        (token0, token1) = address(tokenA) < address(tokenB) ? (tokenA, tokenB) : (tokenB, tokenA);
+
+        uint160 flags = uint160(
+            Hooks.AFTER_INITIALIZE_FLAG
+                | Hooks.BEFORE_ADD_LIQUIDITY_FLAG
+                | Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG
+                | Hooks.BEFORE_SWAP_FLAG
+                | Hooks.AFTER_SWAP_FLAG
+        );
+        deployCodeTo("CuratedVaultHook.sol", abi.encode(manager), address(flags));
+        hook = CuratedVaultHook(address(flags));
+        vaultShares = hook.vaultShares();
+
+        hookKey = PoolKey({
+            currency0: Currency.wrap(address(token0)),
+            currency1: Currency.wrap(address(token1)),
+            fee: 0x800000,
+            tickSpacing: 60,
+            hooks: IHooks(address(hook))
+        });
+        manager.initialize(hookKey, TickMath.getSqrtPriceAtTick(0));
+
+        token0.mint(alice, 100 ether);
+        token1.mint(alice, 100 ether);
+        vm.startPrank(alice);
+        token0.approve(address(hook), type(uint256).max);
+        token1.approve(address(hook), type(uint256).max);
+        vm.stopPrank();
+    }
+
+    /// @notice Passes with deadline fix. Fails if deadline check is removed.
+    function test_finding4_depositRevertsIfDeadlineExpired() public {
+        vm.prank(alice);
+        vm.expectRevert(CuratedVaultHook.CuratedVaultHook_DeadlineExpired.selector);
+        hook.deposit(1 ether, 1 ether, 0, 0, 0.5 ether, block.timestamp - 1);
+    }
+
+    /// @notice Passes with deadline fix. Fails if deadline check is removed.
+    function test_finding4_withdrawRevertsIfDeadlineExpired() public {
+        vm.prank(alice);
+        hook.deposit(1 ether, 1 ether, 0, 0, 0.5 ether, block.timestamp + 1 hours);
+        uint256 aliceShares = vaultShares.balanceOf(alice);
+
+        vm.prank(alice);
+        vm.expectRevert(CuratedVaultHook.CuratedVaultHook_DeadlineExpired.selector);
+        hook.withdraw(aliceShares, 0, 0, block.timestamp - 1);
+    }
+
+    /// @notice Confirms a valid deadline does not block deposit.
+    function test_finding4_depositSucceedsWithValidDeadline() public {
+        vm.prank(alice);
+        hook.deposit(1 ether, 1 ether, 0, 0, 0.5 ether, block.timestamp + 1 hours);
+        assertGt(vaultShares.balanceOf(alice), 0, "shares must be minted");
+    }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+//  Finding #6 — minShares
+// ═════════════════════════════════════════════════════════════════════════════
+
+contract Finding6MinSharesTest is Test, Deployers {
+    CuratedVaultHook hook;
+    VaultShares vaultShares;
+    PoolKey hookKey;
+
+    MockERC20 token0;
+    MockERC20 token1;
+
+    address alice = makeAddr("alice");
+    address bob = makeAddr("bob");
+
+    function setUp() public {
+        deployFreshManagerAndRouters();
+
+        MockERC20 tokenA = new MockERC20("TokenA", "TKA", 18);
+        MockERC20 tokenB = new MockERC20("TokenB", "TKB", 18);
+        (token0, token1) = address(tokenA) < address(tokenB) ? (tokenA, tokenB) : (tokenB, tokenA);
+
+        uint160 flags = uint160(
+            Hooks.AFTER_INITIALIZE_FLAG
+                | Hooks.BEFORE_ADD_LIQUIDITY_FLAG
+                | Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG
+                | Hooks.BEFORE_SWAP_FLAG
+                | Hooks.AFTER_SWAP_FLAG
+        );
+        deployCodeTo("CuratedVaultHook.sol", abi.encode(manager), address(flags));
+        hook = CuratedVaultHook(address(flags));
+        vaultShares = hook.vaultShares();
+
+        hookKey = PoolKey({
+            currency0: Currency.wrap(address(token0)),
+            currency1: Currency.wrap(address(token1)),
+            fee: 0x800000,
+            tickSpacing: 60,
+            hooks: IHooks(address(hook))
+        });
+        manager.initialize(hookKey, TickMath.getSqrtPriceAtTick(0));
+
+        token0.mint(alice, 1000 ether);
+        token1.mint(alice, 1000 ether);
+        vm.startPrank(alice);
+        token0.approve(address(hook), type(uint256).max);
+        token1.approve(address(hook), type(uint256).max);
+        vm.stopPrank();
+
+        token0.mint(bob, 100 ether);
+        token1.mint(bob, 100 ether);
+        vm.startPrank(bob);
+        token0.approve(address(hook), type(uint256).max);
+        token1.approve(address(hook), type(uint256).max);
+        vm.stopPrank();
+    }
+
+    /// @notice Passes with minShares fix. Fails if minShares check is removed.
+    ///
+    ///         Bob front-runs alice's deposit, doubling totalLiquidity so alice
+    ///         receives roughly half the expected shares. Demanding
+    ///         type(uint256).max shares is always impossible → SlippageExceeded.
+    function test_finding6_depositRevertsIfSharesBelowMinShares() public {
+        vm.prank(alice);
+        hook.deposit(100 ether, 100 ether, 0, 0, 50 ether, block.timestamp + 1 hours);
+
+        // Bob front-runs: doubles totalLiquidity
+        vm.prank(bob);
+        hook.deposit(100 ether, 100 ether, 0, 0, 50 ether, block.timestamp + 1 hours);
+
+        vm.prank(alice);
+        vm.expectRevert(CuratedVaultHook.CuratedVaultHook_SlippageExceeded.selector);
+        hook.deposit(1 ether, 1 ether, 0, 0, type(uint256).max, block.timestamp + 1 hours);
+    }
+
+    /// @notice Confirms minShares = 0 never blocks a deposit.
+    function test_finding6_depositSucceedsWithZeroMinShares() public {
+        vm.prank(alice);
+        hook.deposit(1 ether, 1 ether, 0, 0, 0.5 ether, block.timestamp + 1 hours);
+        assertGt(vaultShares.balanceOf(alice), 0, "shares must be minted");
     }
 }

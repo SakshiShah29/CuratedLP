@@ -46,6 +46,7 @@ contract CuratedVaultHook is BaseHook, IUnlockCallback, ReentrancyGuard {
     error CuratedVaultHook_IdentityNotOwned();
     error CuratedVaultHook_NoCuratorSet();
     error CuratedVaultHook_ExcessiveIdleBalance();
+    error CuratedVaultHook_DeadlineExpired();
 
     event Deposited(address indexed depositor, uint256 amount0, uint256 amount1, uint256 shares);
     event Withdrawn(address indexed withdrawer, uint256 shares, uint256 amount0, uint256 amount1);
@@ -279,12 +280,18 @@ contract CuratedVaultHook is BaseHook, IUnlockCallback, ReentrancyGuard {
     /// @param amount1Desired Amount of token1 (higher-address token) to deposit.
     /// @param amount0Min Minimum token0 accepted (slippage protection).
     /// @param amount1Min Minimum token1 accepted (slippage protection).
+    /// @param minShares Minimum vault shares to receive. Reverts if diluted below this.
+    /// @param deadline Unix timestamp after which the transaction reverts.
     /// @return shares Number of vault shares minted.
-    function deposit(uint256 amount0Desired, uint256 amount1Desired, uint256 amount0Min, uint256 amount1Min)
-        external
-        nonReentrant
-        returns (uint256 shares)
-    {
+    function deposit(
+        uint256 amount0Desired,
+        uint256 amount1Desired,
+        uint256 amount0Min,
+        uint256 amount1Min,
+        uint256 minShares,
+        uint256 deadline
+    ) external nonReentrant returns (uint256 shares) {
+        if (block.timestamp > deadline) revert CuratedVaultHook_DeadlineExpired();
         if (!poolInitialized) revert CuratedVaultHook_PoolNotInitialized();
         if (amount0Desired == 0 && amount1Desired == 0) revert CuratedVaultHook_ZeroDeposit();
 
@@ -339,6 +346,7 @@ contract CuratedVaultHook is BaseHook, IUnlockCallback, ReentrancyGuard {
         }
 
         if (shares == 0) revert CuratedVaultHook_ZeroShares();
+        if (shares < minShares) revert CuratedVaultHook_SlippageExceeded();
 
         totalLiquidity += liquidity;
         vaultShares.mint(msg.sender, shares);
@@ -362,13 +370,15 @@ contract CuratedVaultHook is BaseHook, IUnlockCallback, ReentrancyGuard {
     /// @param sharesToBurn Number of vault shares to burn.
     /// @param amount0Min Minimum token0 to receive (slippage protection).
     /// @param amount1Min Minimum token1 to receive (slippage protection).
+    /// @param deadline Unix timestamp after which the transaction reverts.
     /// @return amount0 Tokens returned to withdrawer.
     /// @return amount1 Tokens returned to withdrawer.
-    function withdraw(uint256 sharesToBurn, uint256 amount0Min, uint256 amount1Min)
+    function withdraw(uint256 sharesToBurn, uint256 amount0Min, uint256 amount1Min, uint256 deadline)
         external
         nonReentrant
         returns (uint256 amount0, uint256 amount1)
     {
+        if (block.timestamp > deadline) revert CuratedVaultHook_DeadlineExpired();
         if (!poolInitialized) revert CuratedVaultHook_PoolNotInitialized();
         if (sharesToBurn == 0) revert CuratedVaultHook_InsufficientShares();
         if (vaultShares.balanceOf(msg.sender) < sharesToBurn) revert CuratedVaultHook_InsufficientShares();
