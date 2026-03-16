@@ -9,7 +9,7 @@ import { ModeCode } from "@delegator/src/utils/Types.sol";
 ///
 /// This enforcer validates FOUR conditions before allowing execution:
 ///   1. The target address is the CuratedVaultHook contract
-///   2. The function being called is rebalance(int24,int24,uint24)
+///   2. The function being called is rebalance(int24,int24,uint24,uint256,uint256)
 ///   3. The fee parameter is within the delegator-specified bounds
 ///   4. Sufficient blocks have passed since the last rebalance
 ///
@@ -35,8 +35,8 @@ contract CuratedVaultCaveatEnforcer is CaveatEnforcer {
     error InvalidTerms();
 
     // ─── Constants ───────────────────────────────────────────────────
-    /// @dev Function selector for: rebalance(int24,int24,uint24)
-    bytes4 public constant REBALANCE_SELECTOR = bytes4(keccak256("rebalance(int24,int24,uint24)"));
+    /// @dev Function selector for: rebalance(int24,int24,uint24,uint256,uint256)
+    bytes4 public constant REBALANCE_SELECTOR = bytes4(keccak256("rebalance(int24,int24,uint24,uint256,uint256)"));
 
     // ─── Storage for rate limiting ───────────────────────────────────
     /// @dev delegationHash => last block number this delegation was used
@@ -94,17 +94,20 @@ contract CuratedVaultCaveatEnforcer is CaveatEnforcer {
         if (selector != REBALANCE_SELECTOR) revert InvalidFunction();
 
         // ── Check 3: Fee is within bounds ────────────────────────────
-        // rebalance(int24 newTickLower, int24 newTickUpper, uint24 newFee)
+        // rebalance(int24 newTickLower, int24 newTickUpper, uint24 newFee,
+        //           uint256 maxIdleToken0, uint256 maxIdleToken1)
         // After the 4-byte selector, the args are ABI-encoded:
-        //   int24 newTickLower (padded to 32 bytes)
-        //   int24 newTickUpper (padded to 32 bytes)
-        //   uint24 newFee (padded to 32 bytes)
-        // Total: 4 + 96 = 100 bytes
-        require(callData.length >= 100, "Calldata incomplete");
+        //   int24  newTickLower   (padded to 32 bytes)
+        //   int24  newTickUpper   (padded to 32 bytes)
+        //   uint24 newFee         (padded to 32 bytes)
+        //   uint256 maxIdleToken0 (32 bytes)
+        //   uint256 maxIdleToken1 (32 bytes)
+        // Total: 4 + 5*32 = 164 bytes
+        require(callData.length >= 164, "Calldata incomplete");
 
-        (, , uint24 newFee) = abi.decode(
+        (, , uint24 newFee, , ) = abi.decode(
             callData[4:],
-            (int24, int24, uint24)
+            (int24, int24, uint24, uint256, uint256)
         );
 
         if (newFee < minFee || newFee > maxFee) revert FeeOutOfBounds();
