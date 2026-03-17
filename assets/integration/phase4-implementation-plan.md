@@ -125,6 +125,51 @@ Each module is tested in isolation before the next is started.
 
 ---
 
+## Two-Person Parallel Work Division
+
+### Phase 0 — Shared Setup (Steps 1–2)
+
+Steps 1 and 2 are prerequisites for everything. Do them together or have one person do them and merge before either track starts. Don't split these.
+
+**One coordination point**: before diverging, agree on and add these interfaces to `types.ts`. Track B's FSM is built against these; Track A implements them. This is the only point where the two tracks must align.
+
+```typescript
+interface IPoolReader   { getPoolState(): Promise<PoolState | null> }
+interface IVeniceClient { getRecommendation(pool: PoolState, market: MarketData | null, mech: MechResults | null, price: number | null): Promise<RebalanceRecommendation | null> }
+interface IX402Client   { fetchMarketData(): Promise<MarketData | null> }
+interface IMechClient   { runRequests(pool: PoolState): Promise<MechResults | null> }
+interface IUniswapApi   { getPrice(): Promise<number | null> }
+interface IRebalancer   { shouldRebalance(pool: PoolState, rec: RebalanceRecommendation): boolean; executeRebalance(rec: RebalanceRecommendation): Promise<{ txHash: string; success: boolean }> }
+```
+
+### Track A — Data & Intelligence (Steps 4, 5, 6, 7, 8)
+
+| Step | Module | Blocked by |
+|---|---|---|
+| 5 | `uniswap-api.ts` | nothing — start immediately |
+| 4 | `locus.ts` | nothing — start immediately |
+| 7 | `mech-client.ts` | nothing — start immediately |
+| 8 | `venice.ts` | nothing — start immediately |
+| 6 | `x402-client.ts` | step 4 (`locus.ts`) merged |
+
+Steps 4, 5, 7, and 8 are fully independent — work on all four in parallel.
+
+### Track B — On-Chain & Orchestration (Steps 3, 9, 10)
+
+| Step | Module | Blocked by |
+|---|---|---|
+| 3 | `pool-reader.ts` | nothing — start immediately |
+| 10 | `fsm.ts` + `index.ts` | nothing — build against the agreed interfaces using stub no-ops |
+| 9 | `rebalancer.ts` | step 3 (`pool-reader.ts`) merged |
+
+`fsm.ts` can be built to completion using stub implementations of the Track A interfaces. When Track A modules merge, replace stubs with real constructors — this is a short wiring step, not a rewrite.
+
+### Integration
+
+Once all Track A modules are merged and tested, Track B wires them into the FSM. Then both run the end-to-end verification checklist together on Base Sepolia.
+
+---
+
 ## Step 1: Project Scaffolding
 
 Set up the `agent/` directory as a standalone TypeScript Node project.
