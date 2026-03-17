@@ -50,6 +50,7 @@ contract CuratedVaultHook is BaseHook, IUnlockCallback, ReentrancyGuard {
     error CuratedVaultHook_NoCuratorSet();
     error CuratedVaultHook_ExcessiveIdleBalance();
     error CuratedVaultHook_DeadlineExpired();
+    error CuratedVaultHook_NoFeesToClaim();
 
     event Deposited(address indexed depositor, uint256 amount0, uint256 amount1, uint256 shares);
     event Withdrawn(address indexed withdrawer, uint256 shares, uint256 amount0, uint256 amount1);
@@ -58,6 +59,7 @@ contract CuratedVaultHook is BaseHook, IUnlockCallback, ReentrancyGuard {
     event Rebalanced(uint256 indexed curatorId, int24 newTickLower, int24 newTickUpper, uint24 newFee);
     event FeeUpdated(uint24 oldFee, uint24 newFee);
     event SwapTracked(uint256 volume, uint256 feeRevenue);
+    event PerformanceFeeClaimed(uint256 indexed curatorId, address indexed wallet, uint256 amount);
 
     /// @dev Dead shares minted to address(1) on first deposit to prevent
     ///      share inflation attacks. See: ERC-4626 inflation attack.
@@ -134,6 +136,9 @@ contract CuratedVaultHook is BaseHook, IUnlockCallback, ReentrancyGuard {
 
     /// @dev Cumulative approximate fee revenue (token0 denominated).
     uint256 public cumulativeFeeRevenue;
+
+    /// @dev Performance fees accrued and claimable by the active curator (token0 denominated).
+    uint256 public accruedPerformanceFee;
 
     /// @dev Total number of swaps processed.
     uint256 public totalSwaps;
@@ -268,6 +273,11 @@ contract CuratedVaultHook is BaseHook, IUnlockCallback, ReentrancyGuard {
         cumulativeVolume += volume;
         cumulativeFeeRevenue += feeRevenue;
         totalSwaps++;
+
+        // Accrue the curator's performance fee share from this swap's revenue.
+        if (activeCuratorId != 0) {
+            accruedPerformanceFee += (feeRevenue * curators[activeCuratorId].performanceFeeBps) / 10_000;
+        }
 
         emit SwapTracked(volume, feeRevenue);
 
@@ -501,12 +511,14 @@ contract CuratedVaultHook is BaseHook, IUnlockCallback, ReentrancyGuard {
         if (!poolInitialized) revert CuratedVaultHook_PoolNotInitialized();
 
         // ── Check 1: Caller is the active curator ────────────────────
-        uint256 curatorId = curatorByWallet[msg.sender];
-        if (curatorId == 0) revert CuratedVaultHook_OnlyCurator();
-        if (curatorId != activeCuratorId) revert CuratedVaultHook_OnlyCurator();
+        // In the delegation model, the curator's MetaMask Smart Account
+        // delegates to Moltbot. When Moltbot redeems, DelegationManager
+        // executes on behalf of the Smart Account → msg.sender = Smart Account.
+        // curatorByWallet[SmartAccount] must equal activeCuratorId.
+        if (activeCuratorId == 0) revert CuratedVaultHook_NoCuratorSet();
+        if (curatorByWallet[msg.sender] != activeCuratorId) revert CuratedVaultHook_OnlyCurator();
 
-        Curator storage curator = curators[curatorId];
-        if (!curator.active) revert CuratedVaultHook_CuratorNotActive();
+        Curator storage curator = curators[activeCuratorId];
 
         // ── Check 2: Rate limiting ───────────────────────────────────
         if (uint64(block.number) < curator.lastRebalanceBlock + MIN_REBALANCE_INTERVAL) {
@@ -578,7 +590,7 @@ contract CuratedVaultHook is BaseHook, IUnlockCallback, ReentrancyGuard {
         }
 
         emit FeeUpdated(oldFee, newFee);
-        emit Rebalanced(curatorId, newTickLower, newTickUpper, newFee);
+        emit Rebalanced(activeCuratorId, newTickLower, newTickUpper, newFee);
         emit LiquidityModified(newTickLower, newTickUpper, int128(uint128(totalLiquidity)));
     }
 
@@ -630,6 +642,33 @@ contract CuratedVaultHook is BaseHook, IUnlockCallback, ReentrancyGuard {
         }
 
         emit CuratorRegistered(curatorId, msg.sender, erc8004IdentityId);
+    }
+
+    // ═════════════════════════════════════════════════════════════════════
+    //                      CLAIM PERFORMANCE FEE
+    // ═════════════════════════════════════════════════════════════════════
+
+    /// @notice Claim accumulated performance fees.
+    /// @dev Only callable by the active curator (directly or via MetaMask delegation).
+    ///      Performance fees accrue in token0 from each swap proportional to
+    ///      the curator's performanceFeeBps set at registration.
+    ///      Fees are transferred from the hook's idle token0 balance, which
+    ///      accumulates from collected LP fees during rebalances.
+    function claimPerformanceFee() external nonReentrant {
+        if (activeCuratorId == 0) revert CuratedVaultHook_NoCuratorSet();
+
+        uint256 curatorId = curatorByWallet[msg.sender];
+        if (curatorId == 0 || curatorId != activeCuratorId) revert CuratedVaultHook_OnlyCurator();
+
+        uint256 amount = accruedPerformanceFee;
+        if (amount == 0) revert CuratedVaultHook_NoFeesToClaim();
+
+        accruedPerformanceFee = 0;
+
+        IERC20 token0 = IERC20(Currency.unwrap(poolKey.currency0));
+        token0.safeTransfer(msg.sender, amount);
+
+        emit PerformanceFeeClaimed(curatorId, msg.sender, amount);
     }
 
     // ═════════════════════════════════════════════════════════════════════

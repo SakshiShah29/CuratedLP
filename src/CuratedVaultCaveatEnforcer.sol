@@ -5,13 +5,19 @@ import { CaveatEnforcer } from "@delegator/src/enforcers/CaveatEnforcer.sol";
 import { ModeCode } from "@delegator/src/utils/Types.sol";
 
 /// @title CuratedVaultCaveatEnforcer
-/// @notice Restricts delegated rebalance calls to the CuratedVaultHook.
+/// @notice Restricts delegated calls to the CuratedVaultHook.
 ///
-/// This enforcer validates FOUR conditions before allowing execution:
-///   1. The target address is the CuratedVaultHook contract
-///   2. The function being called is rebalance(int24,int24,uint24,uint256,uint256)
-///   3. The fee parameter is within the delegator-specified bounds
-///   4. Sufficient blocks have passed since the last rebalance
+/// Supports two allowed functions:
+///   A) rebalance(int24,int24,uint24,uint256,uint256) — validates FOUR conditions:
+///      1. Target address is the CuratedVaultHook contract
+///      2. Function selector matches rebalance()
+///      3. Fee parameter is within delegator-specified bounds
+///      4. Sufficient blocks have passed since the last rebalance
+///
+///   B) claimPerformanceFee() — validates TWO conditions:
+///      1. Target address is the CuratedVaultHook contract
+///      2. Function selector matches claimPerformanceFee()
+///      (No fee bounds or rate limiting — curator claims whenever accrued)
 ///
 /// Terms encoding (set by delegator at delegation creation time):
 ///   abi.encode(address hookAddress, uint24 minFee, uint24 maxFee, uint64 minBlockInterval)
@@ -37,6 +43,9 @@ contract CuratedVaultCaveatEnforcer is CaveatEnforcer {
     // ─── Constants ───────────────────────────────────────────────────
     /// @dev Function selector for: rebalance(int24,int24,uint24,uint256,uint256)
     bytes4 public constant REBALANCE_SELECTOR = bytes4(keccak256("rebalance(int24,int24,uint24,uint256,uint256)"));
+
+    /// @dev Function selector for: claimPerformanceFee()
+    bytes4 public constant CLAIM_FEE_SELECTOR = bytes4(keccak256("claimPerformanceFee()"));
 
     // ─── Storage for rate limiting ───────────────────────────────────
     /// @dev delegationHash => last block number this delegation was used
@@ -88,12 +97,18 @@ contract CuratedVaultCaveatEnforcer is CaveatEnforcer {
         // ── Check 1: Target is the hook ──────────────────────────────
         if (target != hookAddress) revert InvalidTarget();
 
-        // ── Check 2: Function is rebalance ───────────────────────────
-        require(callData.length >= 4, "No selector");
+        // ── Check 2: Function selector must be rebalance() or claimPerformanceFee() ──
+        // Note: callData.length >= 4 is guaranteed by the >= 56 total-length check above.
         bytes4 selector = bytes4(callData[0:4]);
+
+        if (selector == CLAIM_FEE_SELECTOR) {
+            // claimPerformanceFee() — target already validated above, nothing else to check.
+            return;
+        }
+
         if (selector != REBALANCE_SELECTOR) revert InvalidFunction();
 
-        // ── Check 3: Fee is within bounds ────────────────────────────
+        // ── Check 3: Fee is within bounds (rebalance only) ───────────
         // rebalance(int24 newTickLower, int24 newTickUpper, uint24 newFee,
         //           uint256 maxIdleToken0, uint256 maxIdleToken1)
         // After the 4-byte selector, the args are ABI-encoded:
@@ -112,8 +127,13 @@ contract CuratedVaultCaveatEnforcer is CaveatEnforcer {
 
         if (newFee < minFee || newFee > maxFee) revert FeeOutOfBounds();
 
-        // ── Check 4: Rate limiting ───────────────────────────────────
-        if (uint64(block.number) < lastRebalanceBlock[_delegationHash] + minBlockInterval) {
+        // ── Check 4: Rate limiting (rebalance only) ──────────────────
+        // Skip on first use (lastRebalanceBlock == 0) so a freshly-created
+        // delegation can always execute its first rebalance immediately.
+        if (
+            lastRebalanceBlock[_delegationHash] != 0 &&
+            uint64(block.number) < lastRebalanceBlock[_delegationHash] + minBlockInterval
+        ) {
             revert RebalanceTooFrequent();
         }
         lastRebalanceBlock[_delegationHash] = uint64(block.number);
