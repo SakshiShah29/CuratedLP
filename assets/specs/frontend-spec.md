@@ -1,6 +1,8 @@
 # CuratedLP Frontend — Flow Spec
 
-*Last updated: 2026-03-18*
+*Last updated: 2026-03-20*
+
+*Related: curator-agent-identity-spec.md, openclaw-agent-spec.md*
 
 ---
 
@@ -64,34 +66,56 @@ Navigation: simple top tab bar across all three. No routing depth beyond this.
 
 **Who it's for**: Anyone curious about the AI agent. This is the transparency/trust page.
 
-### Top Section — Curator Identity
+### Top Section — Agent Identity
 
-- Curator Basename (e.g., `vault-curator.base.eth`) — ENS resolution via viem
-- ERC-8004 Identity ID (link to BaseScan)
-- Curator address (truncated, copyable)
-- Status indicator: Online / Offline (based on how recent `lastRebalanceBlock` is relative to current block)
+The curator IS the AI agent. The Agent Smart Account is the registered
+curator. The Locus Wallet is the agent's operational trigger + data
+spending wallet. See curator-agent-identity-spec.md for the full model.
+
+- Agent Basename (e.g., `vault-curator.base.eth`) — ENS resolution via viem,
+  resolves the Agent Smart Account address
+- ERC-8004 Identity ID (link to BaseScan — NFT held by Agent Smart Account)
+- Agent Smart Account address (truncated, copyable) — this is the curator
+- Status indicator: Online / Offline (based on how recent `lastRebalanceBlock`
+  is relative to current block — if within last 100 blocks, online)
 
 ### Middle Section — Agent Activity Log
 
-- A reverse-chronological feed of agent actions. The agent FSM (Phase 4) should write structured logs to an endpoint or static JSON file that the frontend polls/reads.
+- A reverse-chronological feed of agent heartbeat cycles. The OpenClaw
+  agent writes a structured cycle log after each heartbeat (see
+  openclaw-agent-spec.md section 8). The frontend reads this log.
 - Each entry shows:
   - Timestamp
-  - FSM state (MONITOR / ANALYZE / DECIDE / EXECUTE / REPORT)
-  - Key data: Venice recommendation, x402 data purchased, rebalance params, or "No action — position still optimal"
-- This is the "Venice AI reasoning" window from the spec mockup
-- Polling interval: every 30-60 seconds, or just read a static file the agent writes to
+  - Heartbeat phase reached (OBSERVE / ANALYZE / DECIDE / ACT / REFLECT)
+  - Key data: what data was gathered, Venice's recommendation + reasoning,
+    what decision was made and why, tx hash if rebalanced, or
+    "No action — confidence too low / position still optimal"
+  - Budget spent this cycle (USDC for x402/Olas)
+- This is the core transparency feature — it shows the agent's autonomous
+  reasoning. OpenClaw's LLM reasoning trail is logged automatically,
+  including WHY the agent made each decision.
+- Data source: agent writes cycle-log.json (append-only). Frontend polls
+  every 30-60 seconds. Alternatively, agent writes to a simple API
+  endpoint that the frontend reads.
 
 ### Bottom Section — Operational Stats
 
-- Locus wallet balance + daily spend (from Locus API or cached by agent)
-- Delegation status: Active / Revoked, fee bounds, rate limit
-- x402 payments today: count + total USDC spent
+- Locus wallet balance + daily spend (from agent's cycle log or Locus API)
+- Delegation status: Active / Revoked, fee bounds [minFee, maxFee], rate limit
+  (read from the signed delegation terms — the human operator's mandate)
+- x402 payments today: count + total USDC spent (from payment-log.json)
+- Olas Mech requests: count / 10 minimum (bounty tracking)
 
 ### Key UX Decisions
 
-- The activity log is the star of this view — it proves the AI is real and working
-- Don't over-design the Locus/delegation section. Simple key-value pairs are fine
-- If Locus API integration is too heavy for the frontend, have the agent write a `status.json` that the frontend reads
+- The activity log is the star of this view — it proves the AI is
+  genuinely reasoning, not just running a script. Show Venice's reasoning
+  text prominently.
+- Don't over-design the Locus/delegation section. Simple key-value pairs
+  are fine.
+- The agent writes cycle-log.json and payment-log.json. The frontend
+  reads these files — no separate API needed. If the agent runs on a
+  different machine, serve these files via a simple static file server.
 
 ---
 
@@ -150,7 +174,7 @@ The frontend should support this exact walkthrough:
 
 1. **Land on Vault Overview** → "Here's the vault: TVL, fee, tick range, AI curator managing it"
 2. **Connect wallet, deposit** → "Alice deposits wstETH + USDC, gets cvLP shares"
-3. **Switch to Curator Dashboard** → "Here's what the AI is doing — Venice recommended widening the range, agent rebalanced 3 minutes ago, paid $0.003 for market data via x402"
+3. **Switch to Curator Dashboard** → "Here's what the AI is doing — OpenClaw reasoned about market conditions, Venice recommended widening the range, agent rebalanced 3 minutes ago, paid $0.003 for market data via x402"
 4. **Switch to Performance** → "Vault is outperforming passive LP by 6%, here's the rebalance history with on-chain proof"
 5. **Back to Vault Overview, withdraw** → "Alice withdraws anytime, no lockup, tokens returned"
 6. **Point to curator Basename** → "Everything is human-readable via ENS"
@@ -166,8 +190,9 @@ The frontend should support this exact walkthrough:
 | Performance metrics | `getPerformanceMetrics()` | Contract read |
 | Rebalance history | `Rebalanced` event logs | `getLogs` via viem |
 | Swap history | `SwapTracked` event logs | `getLogs` via viem |
-| Venice AI reasoning / agent activity | Agent-written log file or API | Poll `status.json` or simple API |
-| Locus spending | Agent-cached data or Locus API | Read from agent status |
+| Agent activity + Venice reasoning | OpenClaw cycle-log.json | Poll file every 30-60s |
+| Payment history (x402, Olas) | Agent payment-log.json | Read on page load + poll |
+| Locus spending | Agent cycle log or Locus API | Read from cycle log budget fields |
 | Basename resolution | Base L2 ENS resolver | viem `getEnsName()` |
 | Token prices (optional) | Uniswap Trading API or Chainlink | API call for USD conversion |
 

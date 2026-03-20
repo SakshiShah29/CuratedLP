@@ -1,6 +1,8 @@
 # CuratedLP — Detailed Technical Specification
 
-*Last updated: 2026-03-17*
+*Last updated: 2026-03-20*
+
+*Related specs: curator-agent-identity-spec.md, openclaw-agent-spec.md*
 
 ---
 
@@ -16,45 +18,56 @@ and earns performance fees only when it outperforms passive LP returns.
 
 ## 2. Actors
 
+The curator IS the AI agent. "Curator" is a role the agent holds in
+the vault. The agent has two on-chain addresses — one for identity and
+execution, one for triggering actions and spending on data. For the full
+identity model, see curator-agent-identity-spec.md.
+
 ```
  +-----------------+     +---------------------------+     +-------------------+
- |   Human LP      |     |   Curator Smart Account   |     |    Swapper        |
- |   ("Alice")     |     |   (MetaMask DeleGator)    |     |    ("Bob")        |
+ |   Human LP      |     |   The Agent               |     |    Swapper        |
+ |   ("Alice")     |     |   (curator = AI agent)    |     |    ("Bob")        |
  |                 |     |                           |     |                   |
- |  - Regular EOA  |     |  - MetaMask Smart Account |     |  - Any trader     |
- |  - Deposits     |     |  - Registers as curator   |     |  - Swaps through  |
- |  - Withdraws    |     |  - Signs delegation       |     |    the pool       |
- |  - Holds shares |     |  - Owns ERC-8004 NFT      |     |  - Pays dynamic   |
- |                 |     |                           |     |    fee set by     |
- |  NO delegation  |     |  DELEGATOR                |     |    curator        |
- |  involvement    |     |                           |     |                   |
- +-----------------+     +---------------------------+     +-------------------+
+ |  - Regular EOA  |     |  Two on-chain addresses:  |     |  - Any trader     |
+ |  - Deposits     |     |                           |     |  - Swaps through  |
+ |  - Withdraws    |     |  Agent Smart Account:     |     |    the pool       |
+ |  - Holds shares |     |   - MetaMask DeleGator    |     |  - Pays dynamic   |
+ |                 |     |   - Registered curator     |     |    fee set by     |
+ |  NO delegation  |     |   - Holds ERC-8004 NFT    |     |    curator        |
+ |  involvement    |     |   - Pays gas (ETH)        |     |                   |
+ |                 |     |   - DELEGATOR              |     |                   |
+ +-----------------+     |                           |     +-------------------+
+                          |  Locus Wallet:            |
+                          |   - ERC-4337 smart wallet |
+                          |   - Triggers delegation   |
+                          |   - Pays for data (USDC)  |
+                          |   - DELEGATE              |
+                          +---------------------------+
                                      |
-                                     | signs delegation
-                                     | (off-chain, one-time)
+                                     | OpenClaw runtime reasons
+                                     | about what to do each
+                                     | heartbeat (every 5 min)
                                      v
                           +-------------------+          +---------------------+
-                          |    Moltbot        |          |  Volatility Agent   |
-                          |  (AI Agent EOA)   |          |  ("Charlie")        |
+                          |  OpenClaw Agent   |          |  Volatility Agent   |
+                          |  (reasoning)      |          |  ("Charlie")        |
                           |                   |          |                     |
-                          | - OpenClaw agent  |  sub-    | - Specialized agent |
-                          | - Runs FSM loop   | ------> | - Handles high-vol  |
-                          | - Redeems         | delegate | - Redeems 2-hop     |
-                          |   delegations     |          |   delegation chain  |
-                          |                   |          |                     |
-                          | REDEEMER          |          | SUB-REDEEMER        |
+                          | - Reads SKILL.md  |  sub-    | - Specialized agent |
+                          | - Invokes tools   | ------> | - Handles high-vol  |
+                          | - Makes decisions | delegate | - Redeems 2-hop     |
+                          | - Autonomous      |          |   delegation chain  |
                           +-------------------+          +---------------------+
 ```
 
 ### Actor Responsibilities
 
-| Actor | On-Chain Actions | MetaMask Delegation Role |
+| Actor | On-Chain Addresses | Role |
 |---|---|---|
-| Human LP (Alice) | `deposit()`, `withdraw()` | None |
-| Curator Smart Account | `registerCurator()`, sign delegation | Delegator |
-| Moltbot (AI Agent) | `DelegationManager.redeemDelegations()` | Redeemer |
-| Volatility Agent | `DelegationManager.redeemDelegations()` | Sub-redeemer (optional) |
-| Swapper (Bob) | Swaps via PoolSwapTest / router | None |
+| Human LP (Alice) | EOA | Deposits, withdraws. No delegation involvement. |
+| The Agent | Agent Smart Account (identity, curator, gas) + Locus Wallet (trigger, data spending) | Registered curator. OpenClaw reasons, Locus triggers delegation, Smart Account executes on hook. |
+| Human Operator | EOA (controls Smart Account) | One-time setup: creates SA, signs delegation bounds. Emergency recovery. |
+| Volatility Agent | Locus Wallet (sub-redeemer) | Optional specialist for extreme conditions. Redeems 2-hop chain. |
+| Swapper (Bob) | Any address | Trades through pool normally. Pays dynamic fee. |
 
 ---
 
@@ -116,66 +129,80 @@ delegation framework provides scoped permissions without exposing private keys.
 
 ### 4.1 Why Delegation?
 
-The curator's AI agent (Moltbot) needs to call `rebalance()` on the hook.
-But `rebalance()` requires `msg.sender` to be the registered curator's wallet.
-Without delegation, the agent would need the curator's private key — a security risk.
+The agent's Smart Account is registered as the curator. But the OpenClaw
+runtime needs a way to trigger on-chain actions without holding the Smart
+Account's signing key directly. The delegation separates identity from
+execution — the Smart Account (identity) delegates to the Locus Wallet
+(trigger) with enforced bounds.
 
-Instead: the curator's MetaMask Smart Account delegates limited authority to Moltbot.
+This also enables key rotation (if the Locus wallet key is compromised,
+revoke delegation and assign a new wallet — identity and reputation are
+unaffected) and on-chain guardrails (the enforcer validates every action
+even if the OpenClaw LLM hallucinates bad parameters).
 
-### 4.2 Setup Phase (One-Time)
+### 4.2 Setup Phase (One-Time, Human Operator)
 
 ```
-    Curator Operator (human)
+    Human Operator
          |
-         | (1) Creates MetaMask Smart Account
+         | (1) Creates Agent Smart Account (MetaMask DeleGator)
+         |     This becomes the agent's on-chain identity.
          v
     +----------------------------+
-    | Curator Smart Account      |
+    | Agent Smart Account        |
     | (DeleGator)                |
     +----------------------------+
          |
-         | (2) Registers ERC-8004 identity NFT
+         | (2) Funds Smart Account with ETH (for gas)
+         |
+         | (3) Registers ERC-8004 identity NFT
          |     Smart Account calls IdentityRegistry.register()
-         |     Receives identity NFT at Smart Account address
+         |     Receives identity NFT — the agent's on-chain identity
          v
     +----------------------------+
-    | ERC-8004 IdentityRegistry  |   ownerOf(tokenId) == Smart Account
+    | ERC-8004 IdentityRegistry  |   ownerOf(tokenId) == Agent Smart Account
     +----------------------------+
          |
-         | (3) Registers as curator in the hook
+         | (4) Registers as curator in the hook
          |     Smart Account calls hook.registerCurator(feeBps, tokenId)
          |     Hook verifies: IdentityRegistry.ownerOf(tokenId) == msg.sender
-         |     Stores: curatorByWallet[SmartAccount] = curatorId
+         |     Stores: curatorByWallet[AgentSmartAcct] = curatorId
          |     First curator auto-becomes activeCuratorId
          v
     +----------------------------+
     | CuratedVaultHook           |   curatorByWallet[SA] = 1, activeCuratorId = 1
     +----------------------------+
          |
-         | (4) Signs delegation to Moltbot (OFF-CHAIN)
-         |     Smart Account signs: "Moltbot may call rebalance() and
+         | (5) Sets up Locus wallet (ERC-4337, USDC, spending limits)
+         |
+         | (6) Signs delegation: Agent Smart Account → Locus Wallet
+         |     "Locus Wallet may trigger rebalance() and
          |     claimPerformanceFee() on hook address, with fee between
          |     minFee and maxFee, no more than once per N blocks"
-         |
-         |     This is an EIP-712 typed signature — no on-chain tx.
-         |     The signed bytes are stored in Moltbot's config.
+         |     Human operator defines these bounds — the agent's mandate.
+         |     EIP-712 typed signature — no on-chain tx.
          v
     +----------------------------+
-    | Moltbot (AI Agent EOA)     |   Holds signed delegation bytes
+    | Locus Wallet               |   Holds signed delegation bytes
+    | (agent's trigger + wallet) |   OpenClaw runtime controls this wallet
     +----------------------------+
 ```
 
 ### 4.3 Runtime — Rebalance Execution
 
 ```
-    Moltbot (AI Agent EOA)
+    OpenClaw Runtime (reasoning)
          |
-         | Detects market conditions require rebalance
-         | Constructs: rebalance(-120, 120, 3000, 0, 0)
+         | Heartbeat fires. Agent reads pool state, analyzes data,
+         | decides to rebalance with Venice AI's recommended params.
+         |
+         | Invokes execute-rebalance tool:
+         v
+    Locus Wallet (trigger)
          |
          | (1) Calls DelegationManager.redeemDelegations(
-         |         signedDelegation,        <-- signed once during setup
-         |         rebalanceCalldata         <-- built fresh NOW
+         |         signedDelegation,        <-- signed by human during setup
+         |         rebalanceCalldata         <-- built by OpenClaw this heartbeat
          |     )
          v
     +----------------------------------------------+
@@ -192,7 +219,7 @@ Instead: the curator's MetaMask Smart Account delegates limited authority to Mol
     |        - fee within [minFee, maxFee]?    YES |
     |        - rate limit respected?           YES |
     |                                              |
-    |  (4) Calls SmartAccount.execute(             |
+    |  (4) Calls AgentSmartAccount.execute(        |
     |         hook,                                |
     |         0,                                   |
     |         rebalanceCalldata                    |
@@ -200,13 +227,14 @@ Instead: the curator's MetaMask Smart Account delegates limited authority to Mol
     +----------------------------------------------+
                          |
                          | Regular CALL (not delegatecall)
-                         | msg.sender = Smart Account
+                         | msg.sender = Agent Smart Account
+                         | Smart Account pays gas (ETH)
                          v
     +----------------------------------------------+
     | CuratedVaultHook.rebalance(...)              |
     |                                              |
     |  curatorByWallet[msg.sender]                 |
-    |    == curatorByWallet[SmartAccount]           |
+    |    == curatorByWallet[AgentSmartAcct]         |
     |    == activeCuratorId                         |
     |    == 1                                  YES |
     |                                              |
@@ -220,29 +248,31 @@ Instead: the curator's MetaMask Smart Account delegates limited authority to Mol
 The hook reads its own storage. There is no `DELEGATECALL` — the word "delegation"
 refers to the permission system, not the EVM opcode.
 
-### 4.4 What Moltbot Signs vs. What the Curator Signs
+### 4.4 What the Human Operator Signs vs. What the Agent Constructs
 
 ```
   +----------------------------------------------------------+
   |                                                          |
-  |  CURATOR SIGNS (once, at setup):                         |
+  |  HUMAN OPERATOR SIGNS (once, at setup):                  |
   |                                                          |
-  |    "Moltbot may call rebalance() or claimPerformanceFee()|
-  |     on hook 0xHOOK, with fee between 500 and 10000,     |
-  |     no more than once every 10 blocks"                   |
+  |    "Locus Wallet may trigger rebalance() or              |
+  |     claimPerformanceFee() on hook 0xHOOK, with fee       |
+  |     between 500 and 10000, no more than once every       |
+  |     10 blocks"                                           |
   |                                                          |
-  |    This is the BOUNDS — not a specific fee value.        |
+  |    This is the BOUNDS — the agent's mandate.             |
   |    The delegation remains valid until explicitly revoked. |
   |                                                          |
   +----------------------------------------------------------+
   |                                                          |
-  |  MOLTBOT CONSTRUCTS (fresh each cycle):                  |
+  |  OPENCLAW AGENT CONSTRUCTS (fresh each heartbeat):       |
   |                                                          |
   |    rebalance(-120, 120, 3000, 0, 0)                      |
   |              ^^^^  ^^^  ^^^^                              |
   |              tick   tick  fee = 0.30% (within bounds)     |
   |                                                          |
-  |    This is the SPECIFIC ACTION — chosen by Venice AI.    |
+  |    This is the SPECIFIC ACTION — chosen by Venice AI     |
+  |    via the OpenClaw reasoning layer.                     |
   |    The enforcer verifies it falls within the bounds.     |
   |                                                          |
   +----------------------------------------------------------+
@@ -252,10 +282,10 @@ refers to the permission system, not the EVM opcode.
 
 | Scenario | Result | Recovery |
 |---|---|---|
-| Setup phase never ran | Moltbot cannot rebalance | Run delegation.ts setup script |
-| Curator revokes delegation | Moltbot frozen | Curator signs a new delegation |
-| Fee exceeds signed bounds | Enforcer reverts | Curator signs new delegation with wider bounds |
-| Moltbot key compromised | Attacker can only rebalance within bounds | Curator revokes delegation |
+| Setup phase never ran | Agent cannot rebalance | Run setup.ts + delegation.ts |
+| Human revokes delegation | Agent frozen | Human signs new delegation |
+| Fee exceeds signed bounds | Enforcer reverts | Human signs new delegation with wider bounds |
+| Locus wallet key compromised | Attacker can only rebalance within bounds | Revoke delegation, assign new Locus wallet. Identity + reputation unaffected. |
 
 ---
 
@@ -265,8 +295,8 @@ The naming "Alice -> Bob -> Charlie" in the MetaMask bounty refers to roles
 **within the delegation chain**, not the LP.
 
 ```
-  "Alice" = Curator Smart Account  (the top-level delegator)
-  "Bob"   = Moltbot               (primary agent, redeemer)
+  "Alice" = Agent Smart Account    (the top-level delegator, agent's identity)
+  "Bob"   = Locus Wallet           (primary agent trigger, delegate)
   "Charlie" = Volatility Agent     (specialist, sub-redeemer)
 ```
 
@@ -280,11 +310,11 @@ The naming "Alice -> Bob -> Charlie" in the MetaMask bounty refers to roles
               |
               | Delegation #1
               | terms: hook=0xHOOK, minFee=100, maxFee=50000, interval=10
-              | (wide bounds — trusts Moltbot)
+              | (wide bounds — trusts the agent)
               v
   +---------------------------+
-  | Moltbot                   |
-  | ("Bob")                   |
+  | Locus Wallet              |
+  | ("Bob" — primary trigger) |
   +---------------------------+
               |
               | Delegation #2 (sub-delegation)
@@ -309,7 +339,7 @@ The naming "Alice -> Bob -> Charlie" in the MetaMask bounty refers to roles
   | DelegationManager                                  |
   |                                                    |
   | (1) Validates Curator SA's signature on Deleg #1   |
-  | (2) Validates Moltbot's signature on Deleg #2      |
+  | (2) Validates Locus Wallet's signature on Deleg #2  |
   | (3) Verifies chain: Deleg#2.authority == hash(#1)  |
   |                                                    |
   | (4) Runs enforcer for Delegation #1:               |
@@ -400,9 +430,9 @@ sign the second delegation off-chain.
 ### 6.3 Rebalance Flow
 
 ```
-  Moltbot
+  OpenClaw Agent (via Locus Wallet trigger)
        |
-       | (via DelegationManager -> Smart Account -> hook)
+       | (Locus Wallet -> DelegationManager -> Smart Account -> hook)
        | rebalance(newTickLower, newTickUpper, newFee, maxIdle0, maxIdle1)
        v
   +--------------------------------------------------+
@@ -461,9 +491,9 @@ sign the second delegation off-chain.
 ### 6.5 Claim Performance Fee
 
 ```
-  Moltbot
+  OpenClaw Agent (via Locus Wallet trigger)
        |
-       | (via DelegationManager -> Smart Account -> hook)
+       | (Locus Wallet -> DelegationManager -> Smart Account -> hook)
        | claimPerformanceFee()
        v
   +--------------------------------------------------+
@@ -586,82 +616,61 @@ sign the second delegation off-chain.
 
 ---
 
-## 9. Agent FSM (Off-Chain, TypeScript)
+## 9. Agent Architecture (OpenClaw + TypeScript Tools)
+
+The agent runs on OpenClaw — an LLM-based runtime that reads a SKILL.md
+and autonomously decides what to do each heartbeat. TypeScript CLI tools
+handle deterministic execution (RPC reads, API calls, delegation
+redemption). OpenClaw handles reasoning (tradeoffs, adaptation, context).
+For full details, see openclaw-agent-spec.md.
 
 ```
-                         +----------+
-                         | IDLE     |
-                         | (sleep)  |
-                         +----+-----+
-                              |
-                              | every 5 minutes
-                              v
-                         +----------+
-                         | MONITOR  |
-                         |          |
-                         | Read:    |
-                         |  - tick  |
-                         |  - liq   |
-                         |  - vol   |
-                         +----+-----+
-                              |
-                              v
-                    +---------+----------+
-                    | ANALYZE             |
-                    |                     |
-                    | (1) Uniswap API     |
-                    |     price quotes    |
-                    |                     |
-                    | (2) x402/AgentCash  |
-                    |     market data     |
-                    |     (paid via Locus)|
-                    |                     |
-                    | (3) Olas Mech       |
-                    |     cross-check     |
-                    |                     |
-                    | (4) Venice AI       |
-                    |     "Given pool     |
-                    |      state X and    |
-                    |      market data Y, |
-                    |      recommend      |
-                    |      tick range     |
-                    |      and fee"       |
-                    +---------+----------+
-                              |
-                              v
-                         +----------+
-                         | DECIDE   |
-                         |          |
-                         | Is rec.  |
-                         | different|
-                         | enough?  |
-                         +----+-----+
-                         NO/  |  \YES
-                          /   |   \
-                         v    |    v
-                    IDLE      |   +----------+
-                              |   | EXECUTE  |
-                              |   |          |
-                              |   | Redeem   |
-                              |   | deleg-   |
-                              |   | ation    |
-                              |   | via DM   |
-                              |   +----+-----+
-                              |        |
-                              |        v
-                              |   +----------+
-                              |   | REPORT   |
-                              |   |          |
-                              |   | Write to |
-                              |   | ERC-8004 |
-                              |   | Reputa-  |
-                              |   | tion Reg |
-                              |   +----+-----+
-                              |        |
-                              +--------+
-                              |
-                              v
-                           IDLE
+  Heartbeat fires (every 5 min)
+       |
+       v
+  OBSERVE
+       |  Tools: pool-reader + check-budget
+       |  Agent now knows pool state + spending budget
+       |
+       v
+  REASON ABOUT DATA NEEDS
+       |  OpenClaw LLM decides which sources to fetch
+       |  based on budget, cache freshness, conditions
+       |
+       v
+  ANALYZE
+       |  Tools (as budget allows):
+       |    uniswap-quote  (free)
+       |    market-data    (paid via Locus)
+       |    olas-analyze   (paid via Locus)
+       |    venice-analyze (all data → recommendation)
+       |
+       v
+  DECIDE
+       |  OpenClaw LLM reasons holistically:
+       |    Is change meaningful? Confidence high enough?
+       |    Gas justified? Claim fees first?
+       |
+       |  Possible outcomes:
+       |    A) Rebalance
+       |    B) Claim fees only
+       |    C) Claim fees then rebalance
+       |    D) Do nothing
+       |    E) Sub-delegate (extreme conditions)
+       |
+       v
+  ACT
+       |  Tools: execute-rebalance and/or claim-fees
+       |  Locus Wallet triggers DelegationManager
+       |  → Enforcer validates → Smart Account executes on hook
+       |
+       v
+  REFLECT
+       |  Log: data gathered, Venice reasoning, decision,
+       |  tx hashes, budget spent, running totals
+       |
+       v
+  DONE — wait for next heartbeat
 ```
 
 ---
@@ -698,29 +707,31 @@ sign the second delegation off-chain.
   |   +-------------+                                                       |
   |                                                                         |
   |   +------------------------------------------------------------------+  |
-  |   |                     Agent (TypeScript)                           |  |
+  |   |              OpenClaw Agent (SKILL.md + reasoning)              |  |
+  |   |                                                                  |  |
+  |   |  Invokes CLI tools:                                              |  |
   |   |                                                                  |  |
   |   |   +-------------+    +-------------+    +-------------+          |  |
   |   |   | Venice AI   |    | x402/Merit  |    | Olas Mech   |          |  |
-  |   |   |             |    | AgentCash   |    | Marketplace |          |  |
-  |   |   | Brain:      |    |             |    |             |          |  |
-  |   |   | tick range  |    | Data:       |    | Secondary:  |          |  |
-  |   |   | + fee       |    | price feeds |    | cross-check |          |  |
-  |   |   | recommend-  |    | sentiment   |    | Venice      |          |  |
-  |   |   | ation       |    | volatility  |    | recommend-  |          |  |
-  |   |   +-------------+    +------+------+    | ations      |          |  |
-  |   |                             |           +-------------+          |  |
-  |   |                        pays via                                  |  |
-  |   |                             |                                    |  |
-  |   |                      +------+------+                             |  |
-  |   |                      | Locus       |                             |  |
-  |   |                      |             |                             |  |
-  |   |                      | Wallet:     |                             |  |
-  |   |                      | per-tx      |                             |  |
-  |   |                      | + daily     |                             |  |
-  |   |                      | spending    |                             |  |
-  |   |                      | controls    |                             |  |
-  |   |                      +-------------+                             |  |
+  |   |   | (venice-    |    | AgentCash   |    | Marketplace |          |  |
+  |   |   |  analyze)   |    | (market-    |    | (olas-      |          |  |
+  |   |   |             |    |  data)      |    |  analyze)   |          |  |
+  |   |   | Brain:      |    | Data:       |    | Secondary:  |          |  |
+  |   |   | tick range  |    | price feeds |    | cross-check |          |  |
+  |   |   | + fee       |    | sentiment   |    | Venice      |          |  |
+  |   |   | recommend-  |    | volatility  |    | recommend-  |          |  |
+  |   |   | ation       |    +------+------+    | ations      |          |  |
+  |   |   +-------------+          |            +-------------+          |  |
+  |   |                       pays via                                   |  |
+  |   |                            |                                     |  |
+  |   |                     +------+------+                              |  |
+  |   |                     | Locus       |                              |  |
+  |   |                     | Wallet      | <-- also the DELEGATE        |  |
+  |   |                     | (check-     |     in the MetaMask          |  |
+  |   |                     |  budget)    |     delegation               |  |
+  |   |                     | per-tx +    |                              |  |
+  |   |                     | daily limits|                              |  |
+  |   |                     +-------------+                              |  |
   |   +------------------------------------------------------------------+  |
   |                                                                         |
   |   +-------------+    +-------------+                                    |
@@ -740,7 +751,7 @@ sign the second delegation off-chain.
 | Partner | Layer | Load-Bearing? | What It Does |
 |---|---|---|---|
 | Uniswap v4 | Infrastructure | Yes | Pool, hook system, swap execution, Trading API |
-| MetaMask | Permission | Yes | Scoped delegation from curator SA to agent |
+| MetaMask | Permission | Yes | Scoped delegation from Agent Smart Account to Locus Wallet |
 | Venice AI | Intelligence | Yes | Analyzes data, outputs rebalance recommendation |
 | Merit/x402 | Data Access | Yes | Agent pays for real-time market data via micropayments |
 | Locus | Payment | Yes | Agent wallet with autonomous spending controls |
@@ -790,13 +801,14 @@ sign the second delegation off-chain.
   | LP Alice's EOA           | Attacker can withdraw Alice's shares.     |
   |                          | Cannot rebalance or claim fees.           |
   |--------------------------|-------------------------------------------|
-  | Moltbot EOA              | Attacker can rebalance WITHIN caveat     |
+  | Locus Wallet key         | Attacker can rebalance WITHIN caveat     |
   |                          | bounds (fee range, rate limit).           |
   |                          | Cannot steal LP funds.                    |
   |                          | Cannot exceed fee bounds.                 |
-  |                          | Fix: curator revokes delegation.          |
+  |                          | Fix: revoke delegation, assign new Locus  |
+  |                          | wallet. Identity + reputation unaffected. |
   |--------------------------|-------------------------------------------|
-  | Curator Smart Account    | Attacker becomes the curator.            |
+  | Agent Smart Account      | Attacker becomes the curator.            |
   |                          | Can rebalance to bad tick ranges.        |
   |                          | Can claim performance fees.              |
   |                          | Cannot steal LP principal.               |
@@ -836,18 +848,28 @@ sign the second delegation off-chain.
 | CuratedVaultCaveatEnforcer.t.sol (19 tests) | Done |
 | **Total: 52/52 tests passing** | |
 
-### Agent TypeScript — Not Started
+### Phase 3 Agent (Delegation + OpenClaw Base) — Complete
+
+| Component | Status |
+|---|---|
+| setup.ts (SA creation, ERC-8004, registerCurator) | Done |
+| delegation.ts (single delegation lifecycle) | Done |
+| sub-delegation.ts (3-party chain) | Done |
+| workspace/SKILL.md (Phase 3 — simple heuristic) | Done |
+| tools/pool-reader.ts | Done |
+| tools/execute-rebalance.ts | Done |
+| tools/claim-fees.ts | Done |
+
+### Phase 4 Agent (Intelligence + Data) — Not Started
 
 | Component | Bounty |
 |---|---|
-| delegation.ts (curator SA setup + Moltbot delegation) | MetaMask |
-| sub-delegation.ts (Moltbot -> Volatility Agent chain) | MetaMask |
-| venice.ts (Venice AI market analysis) | Venice |
-| index.ts (FSM agent loop) | Venice |
-| x402-client.ts (AgentCash micropayments) | Merit |
-| locus.ts (agent wallet) | Locus |
-| uniswap-api.ts (Trading API quotes) | Uniswap |
-| mech-client.ts (Olas Mech requests) | Olas |
+| tools/check-budget.ts (Locus wallet) | Locus |
+| tools/uniswap-quote.ts (Trading API) | Uniswap |
+| tools/market-data.ts (AgentCash x402) | Merit |
+| tools/olas-analyze.ts (Mech requests) | Olas |
+| tools/venice-analyze.ts (Venice AI) | Venice |
+| SKILL.md update (full autonomous framework) | All |
 
 ### Frontend — Not Started
 
@@ -1016,10 +1038,11 @@ performance fees accrue and claimable.
 
 ---
 
-### Phase 3: MetaMask Delegation + Enforcer — COMPLETE (Solidity), TypeScript PENDING
+### Phase 3: MetaMask Delegation + Enforcer + OpenClaw Base — COMPLETE
 
-**Goal:** Curator Smart Account delegates scoped authority to Moltbot. Custom
-caveat enforcer validates all delegated calls. TypeScript setup and redemption scripts.
+**Goal:** Agent Smart Account delegates scoped authority to Locus Wallet via
+custom caveat enforcer. TypeScript delegation scripts + OpenClaw agent base
+with CLI tools.
 
 ```
   ONE-TIME SETUP:
@@ -1029,17 +1052,19 @@ caveat enforcer validates all delegated calls. TypeScript setup and redemption s
        | (1) Create MetaMask Smart Account
        | (2) Register ERC-8004 identity from Smart Account
        | (3) Smart Account calls registerCurator() on hook
-       | (4) Smart Account signs delegation to Moltbot:
+       | (4) Sets up Locus Wallet (ERC-4337, USDC, spending limits)
+       |
+       | (5) Signs delegation: Agent Smart Account → Locus Wallet
        |       terms = (hookAddr, minFee, maxFee, interval)
        |       allowed: rebalance(), claimPerformanceFee()
-       | (5) Signed delegation bytes stored in Moltbot config
+       | (6) Configures OpenClaw agent with delegation bytes + keys
        v
-  Moltbot holds permanent, revocable permission
+  Agent operational. Locus Wallet holds signed delegation.
 
 
-  RUNTIME (every rebalance):
+  RUNTIME (every heartbeat):
 
-  Moltbot           DelegationMgr         Enforcer          Smart Account
+  Locus Wallet      DelegationMgr         Enforcer          Smart Account
     |                    |                    |                    |
     | redeemDelegations  |                    |                    |
     |    (signedDeleg,   |                    |                    |
@@ -1063,7 +1088,7 @@ caveat enforcer validates all delegated calls. TypeScript setup and redemption s
   Curator SA ("Alice")
        | Delegation #1: fee [100, 50000], interval 10
        v
-  Moltbot ("Bob")
+  Locus Wallet ("Bob")
        | Delegation #2: fee [500, 20000], interval 60
        | authority = hash(Delegation #1)
        v
@@ -1084,15 +1109,19 @@ caveat enforcer validates all delegated calls. TypeScript setup and redemption s
 - `rebalance()` auth: curator-only check (depositor path removed)
 - 19 enforcer unit tests, 52/52 total tests passing
 
-**What remains (TypeScript):**
+**What was built (TypeScript):**
+- setup.ts — one-time: create SA, register ERC-8004, register curator
+- delegation.ts — single delegation lifecycle: sign + redeem for rebalance + claim
+- sub-delegation.ts — 3-party chain (SA → Locus Wallet → Volatility Agent)
 
-| File | Purpose |
-|---|---|
-| `agent/src/delegation.ts` | Curator SA creation, ERC-8004 registration, registerCurator(), delegation signing to Moltbot |
-| `agent/src/sub-delegation.ts` | Moltbot -> Volatility Agent 2-hop chain construction |
+**What was built (OpenClaw base):**
+- workspace/SKILL.md — Phase 3 skill with simple on-chain heuristic, 3 tools
+- tools/pool-reader.ts — reads hook state via viem multicall
+- tools/execute-rebalance.ts — triggers rebalance via delegation redemption
+- tools/claim-fees.ts — triggers fee claim via delegation redemption
 
-**Deliverable:** Enforcer deployed, delegation signed, Moltbot redeems to rebalance
-within bounds. Sub-delegation chain demonstrated.
+**Deliverable:** Enforcer deployed, delegation signed, agent triggers rebalance
+within bounds via OpenClaw heartbeat. Sub-delegation chain demonstrated.
 
 **How to verify before moving on:**
 - `forge test` — all 52 tests pass (hook + security + enforcer)
@@ -1107,27 +1136,31 @@ within bounds. Sub-delegation chain demonstrated.
 - Enforcer: rate limit is per delegation hash (different hashes independent)
 - Enforcer: `claimPerformanceFee()` selector passes with target-only check
 - Enforcer: `claimPerformanceFee()` has no rate limiting (can call repeatedly)
-- TypeScript (`delegation.ts`):
-  - Run script on Base Sepolia fork
-  - Curator Smart Account is created successfully
-  - Smart Account calls `registerCurator()` — verify on-chain curatorId
-  - Delegation signed and serialized to bytes — verify bytes are non-empty
-  - Moltbot redeems delegation -> `rebalance()` executes on hook
-  - Verify `hook.currentTickLower()` / `currentTickUpper()` changed
+- TypeScript delegation (delegation.ts):
+  - Run on Base Sepolia — SA created, delegation signed, rebalance redeemed
+  - Verify hook state changed (tick range, fee)
   - Redeem with fee outside bounds -> reverts at enforcer level
-- TypeScript (`sub-delegation.ts`):
-  - Moltbot signs sub-delegation to Volatility Agent with tighter bounds
-  - Volatility Agent redeems 2-hop chain [CuratorSA->Moltbot, Moltbot->VolAgent]
-  - Verify rebalance executes and msg.sender == Curator Smart Account
-  - Verify effective bounds are the intersection (tighter of the two)
-  - Volatility Agent tries fee outside sub-delegation bounds -> reverts
+- TypeScript sub-delegation (sub-delegation.ts):
+  - 3-party chain redeemed, bound intersection enforced
+  - Fee outside sub-delegation bounds -> correctly reverts
+- OpenClaw agent base:
+  - pool-reader outputs valid JSON with correct hook state
+  - execute-rebalance triggers successful rebalance via delegation
+  - claim-fees works (success if fees exist, correct error if none)
+  - OpenClaw loads SKILL.md, invokes pool-reader on first heartbeat
+  - Agent reasons about pool state and makes autonomous decision
+  - Agent correctly does nothing when pool is healthy
+  - Agent correctly rebalances when position needs adjustment
+- See phase3-testing.md for full test plan with pass/fail checklist
 
 ---
 
-### Phase 4: Venice AI + x402 + Locus + Agent Loop — NOT STARTED
+### Phase 4: Venice AI + x402 + Locus + Olas — NOT STARTED
 
-**Goal:** The AI agent goes live — reads pool data, buys market data via x402,
-analyzes via Venice AI, executes rebalances via delegation.
+**Goal:** Add intelligence to the OpenClaw agent base. Replace Phase 3's
+simple on-chain heuristic with Venice AI analysis, paid market data via
+x402/AgentCash, Locus budget management, and Olas Mech cross-checking.
+See phase4-implementation-plan.md for full details.
 
 ```
   +-------------------------------------------------------------------+
