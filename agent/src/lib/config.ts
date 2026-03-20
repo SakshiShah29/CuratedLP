@@ -65,6 +65,7 @@ export const OLAS_PAYMENT_KEY      = optional("OLAS_PAYMENT_KEY") || optional("M
 // ─── Phase 4 — Venice (venice-analyze.ts) ──────────────────────────────────
 
 export const VENICE_API_KEY        = optional("VENICE_API_KEY");
+export const VENICE_BASE_URL       = "https://api.venice.ai/api/v1";
 export const VENICE_PRIMARY_MODEL  = optional("VENICE_PRIMARY_MODEL", "zai-org-glm-4.7");
 export const VENICE_FALLBACK_MODEL = optional("VENICE_FALLBACK_MODEL", "llama-3.3-70b");
 export const CONFIDENCE_THRESHOLD  = optionalFloat("CONFIDENCE_THRESHOLD", 0.6);
