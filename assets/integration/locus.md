@@ -1,7 +1,12 @@
 # Locus Integration Reference
 
 *Source: https://docs.paywithlocus.com/llms-full.txt*
-*Last updated: 2026-03-18*
+*Last updated: 2026-03-20 (corrected via web research)*
+
+> **⚠️ CORRECTIONS FROM WEB RESEARCH (2026-03-20)**
+> - **No JWT auth endpoint** — `POST /api/auth` does NOT exist. Auth is a static Bearer token.
+> - **No `/accounts` endpoint** — balance is at `GET /pay/balance`, not `/accounts`.
+> - **API key is the Bearer token** — use `Authorization: Bearer claw_beta_...` directly on every call.
 
 ---
 
@@ -75,13 +80,19 @@ Returns:
 
 Rate limit: 5 self-registrations per IP per hour.
 
-### Step 2: Authentication Flow
+### Step 2: Authentication — Direct Bearer Token
 
 ```
-API Key (claw_dev_xxxx) → POST /api/auth → JWT Bearer Token (15-min TTL)
+Authorization: Bearer claw_beta_YOUR_API_KEY
 ```
 
-Every API call uses `Authorization: Bearer <jwt>`. Token refresh is free. Tokens expire in 15 minutes and require refresh for extended sessions.
+**There is no `/api/auth` endpoint and no JWT.** The API key returned from `/register` is used directly as the Bearer token on every authenticated request. It does not expire.
+
+All authenticated endpoints use:
+```
+Authorization: Bearer claw_beta_...
+Content-Type: application/json
+```
 
 ### Step 3: Configure Spending Controls (Dashboard or API)
 
@@ -133,19 +144,14 @@ Key properties:
 ### Exports
 
 ```typescript
-// Core wallet operations
-getBalance(): Promise<{ balance: number }>
-getAccounts(): Promise<{ accounts: Account[], isNewWallet: boolean }>
+// GET /pay/balance — response: { success: true, data: { balance | usdc | amount } }
+getBalance(): Promise<{ balance: number; walletAddress?: string }>
 
 // Budget enforcement (called before every x402 payment)
 canSpend(amount: number): Promise<boolean>
 
-// Authentication
-authenticate(): Promise<string>  // returns JWT
-refreshToken(): Promise<string>  // refreshes expired JWT
-
-// Transfer (for future use — e.g., paying other agents)
-transferUSDC(to: string, amount: string): Promise<{ txHash: string }>
+// POST /pay/send — { to_address, amount, memo }
+transferUSDC(to: string, amount: string, memo?: string): Promise<{ txHash: string }>
 
 // Checkout (for receiving payments — performance fee collection)
 createCheckoutSession(params: {
@@ -331,7 +337,7 @@ AgentCash attempts **SIWX (Sign-In With X) authentication first** before payment
 | Scenario | Response | Fallback |
 |----------|----------|----------|
 | Balance < required amount | `canSpend()` returns false | Use cached data from last successful cycle |
-| JWT expired (15-min TTL) | Auto-refresh via `authenticate()` | Retry once, then skip cycle |
+| Invalid API key (401) | Locus API rejects | Check LOCUS_API_KEY env var — no refresh needed, key is permanent |
 | Per-tx limit exceeded | Locus API rejects | Split into smaller requests or skip |
 | Daily cap hit | All `canSpend()` return false | Agent enters read-only mode, no rebalances |
 | Wallet not yet deployed | `walletStatus: "deploying"` | Poll every 30s until `"ready"` |
@@ -364,6 +370,33 @@ AgentCash attempts **SIWX (Sign-In With X) authentication first** before payment
 
 ---
 
+## Endpoint Table (Confirmed via Web Research)
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `POST` | `/register` | None | Create agent, returns `apiKey + ownerPrivateKey + walletId` |
+| `GET` | `/status` | Bearer | Poll wallet deployment (`deploying` → `deployed`) |
+| `GET` | `/pay/balance` | Bearer | **Check USDC balance** (use this, not `/accounts`) |
+| `GET` | `/pay/transactions` | Bearer | Transaction history (`?limit=10`) |
+| `GET` | `/pay/transactions/:id` | Bearer | Single transaction |
+| `POST` | `/pay/send` | Bearer | Send USDC: `{ to_address, amount, memo }` |
+| `POST` | `/pay/send-email` | Bearer | Send USDC via email (escrow) |
+| `POST` | `/gift-code-requests` | Bearer | Request promotional USDC |
+| `GET` | `/gift-code-requests/mine` | Bearer | Check request status |
+| `POST` | `/gift-code-requests/redeem` | Bearer | Redeem approved credits |
+| `GET` | `/wrapped/md` | Bearer | List pay-per-use providers |
+| `POST` | `/wrapped/<provider>/<endpoint>` | Bearer | Call a wrapped paid API |
+| `GET` | `/apps/md` | Bearer | Get enabled apps docs |
+| `POST` | `/feedback` | Bearer | Submit feedback |
+
+**Balance response envelope** (exact field name unknown, try all):
+```json
+{ "success": true, "data": { "balance": 8.47 } }
+```
+Try fields: `data.balance`, `data.usdc`, `data.amount` in that order.
+
+---
+
 ## Key Constants
 
 | Item | Value |
@@ -373,9 +406,9 @@ AgentCash attempts **SIWX (Sign-In With X) authentication first** before payment
 | MCP server | `https://mcp.paywithlocus.com/mcp` |
 | Network | Base mainnet (chain ID 8453) |
 | Token | USDC (`0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913`) |
-| API key prefix | `claw_dev_*` (beta), `claw_*` (production) |
+| API key prefix | `claw_beta_*` (beta) |
 | Webhook secret prefix | `whsec_*` |
-| JWT TTL | 15 minutes |
+| Auth method | **Direct Bearer token** (no JWT exchange, API key = Bearer token) |
 | Beta defaults | $10 allowance, $5 max per transaction |
 
 **Note**: Beta and production are fully separate environments. API keys, wallets, and accounts do not transfer between them.

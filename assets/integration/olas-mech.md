@@ -1,7 +1,16 @@
 # Olas Mech Marketplace Integration Reference
 
 *Sources: stack.olas.network, build.olas.network, github.com/valory-xyz/mech-client*
-*Last updated: 2026-03-17*
+*Last updated: 2026-03-20 (corrected via web research)*
+
+> **⚠️ CORRECTIONS FROM WEB RESEARCH (2026-03-20)**
+> - Python version: `>=3.10, <3.15` (NOT `<3.12`)
+> - `--client-mode` is a **global flag** — must precede subcommand: `mechx --client-mode request ...`
+> - Using `--client-mode` skips `mechx setup` entirely (no Safe registration needed)
+> - Stdout format: `✓ Transaction hash: 0x...` and `✓ Request IDs: [...]` with checkmarks
+> - Result is under `✓ Delivery results:\n Request <id>: <text>` (not `Result:`)
+> - Tool names confirmed: `openai-gpt-4o-2024-05-13`, `claude-prediction-online`, `claude-prediction-offline`
+> - `prediction_request`, `superforecaster`, `price_oracle` are NOT confirmed tool names
 
 ---
 
@@ -58,7 +67,7 @@ Or with Poetry:
 poetry add mech-client
 ```
 
-**Requirements**: Python >=3.10, <3.12
+**Requirements**: Python >=3.10, <3.15 (current version: 0.20.0)
 
 ---
 
@@ -74,24 +83,34 @@ Registers agent on-chain. Supported chain configs: `gnosis`, `base`, `polygon`, 
 
 ### Global Flags
 
+**IMPORTANT**: Global flags come BEFORE the subcommand:
+
+```bash
+mechx --client-mode request ...   # CORRECT
+mechx request --client-mode ...   # WRONG
+```
+
 | Flag | Purpose |
 |---|---|
-| `--client-mode` | Use EOA-based client mode (default is Safe-based agent mode) |
+| `--client-mode` | Use EOA-based client mode (skips Safe setup, recommended for hackathon) |
 | `--version` | Display version |
 | `--help` | Show help |
 
 ### Request Submission
 
 ```bash
-mechx request \
-  --prompts <text> \
+# --client-mode MUST come before the subcommand
+mechx --client-mode request \
+  --prompts "<text>" \
   --priority-mech <mech_address> \
   --tools <tool_name> \
   --chain-config <chain_name> \
+  [--key <path_to_key_file>] \
   [--use-prepaid] \
-  [--use-offchain] \
-  [--key <path>]
+  [--use-offchain]
 ```
+
+**With `--client-mode`, no `mechx setup` is required** — it uses EOA directly.
 
 **Batch requests** (multiple prompts + tools in one call):
 ```bash
@@ -102,11 +121,37 @@ mechx request \
   --chain-config <chain_name>
 ```
 
+### Stdout Output Format (mech-client v0.20.0)
+
+```
+Sending marketplace request...
+
+✓ Transaction hash: 0xabc123...def456
+✓ Request IDs: [123456789]
+
+✓ Delivery results:
+ Request 123456789: <result text or JSON>
+```
+
+**Parsing notes for TypeScript shell-out:**
+- Tx hash regex: `/Transaction hash[:\s]+(0x[0-9a-fA-F]{64})/`
+- Request ID regex: `/Request IDs[:\s]+\[?(\d+)/`
+- Result regex: `/Request \d+[:\s]+(.+?)(?=\n[A-Z✓]|$)/s`
+- Off-chain mode: `Transaction hash: None` (no on-chain tx)
+
 ### Mech Discovery
 
 ```bash
-# List top 20 mechs sorted by delivery count
-mechx mech list --chain-config <chain_name>
+# List top 20 mechs sorted by delivery count (use --client-mode)
+mechx --client-mode mech list --chain-config <chain_name>
+```
+
+Output columns: `| AI Agent Id | Mech Type | Mech Address | Total Deliveries | Metadata Link |`
+
+Then list tools for a specific mech:
+
+```bash
+mechx --client-mode tool list <ai_agent_id> --chain-config base
 ```
 
 ### Tool Discovery
@@ -297,16 +342,19 @@ Off-chain mode auto-discovers the mech's HTTP URL from its `ComplementaryService
 
 ## Available Tool Types
 
-### Known Tools
+### Confirmed Tool Names (as of mech-client v0.20.0)
 
 | Tool Name | Purpose | Relevance to CuratedLP |
 |---|---|---|
-| `openai-gpt-4o-2024-05-13` | GPT-4o general reasoning | Market analysis prompts |
-| `openai-gpt-4` | GPT-4 general reasoning | Backup model |
+| `openai-gpt-4o-2024-05-13` | GPT-4o general reasoning | Market analysis, tick range, fee recommendation |
 | `openai-gpt-3.5-turbo` | GPT-3.5 lightweight | Low-cost analysis |
-| `prediction_request` | Probability forecasting | Price direction prediction |
-| `price_oracle` | Market price data | Current price feeds |
-| `superforecaster` | Calibrated probability estimation | Volatility prediction |
+| `openai-gpt-3.5-turbo-instruct` | GPT-3.5 instruct | Lightweight structured output |
+| `claude-prediction-online` | Claude prediction with live web data | Price direction, support/resistance |
+| `claude-prediction-offline` | Claude prediction without live data | Faster, cheaper predictions |
+| `deepmind-optimization` | DeepMind optimization model | Advanced analysis |
+
+> **Note**: `prediction_request`, `superforecaster`, `price_oracle` are NOT confirmed tool names.
+> Use `mechx --client-mode tool list <agent_id> --chain-config base` to get the live list for your mech.
 
 ### Tool Schema Structure
 
@@ -411,16 +459,16 @@ The agent should make at least 10 mech requests per session. Proposed request br
 
 | # | Prompt | Tool | Purpose |
 |---|---|---|---|
-| 1 | "Estimate wstETH/USDC price direction next 4 hours" | prediction_request | Direction bias |
-| 2 | "Estimate probability wstETH drops >2% in 4 hours" | superforecaster | Downside risk |
-| 3 | "Estimate probability wstETH rises >2% in 4 hours" | superforecaster | Upside probability |
-| 4 | "Current wstETH/USD price" | price_oracle | Price feed cross-check |
-| 5 | "Estimate ETH implied volatility next 24 hours" | openai-gpt-4o | Volatility estimate |
-| 6 | "Optimal concentrated liquidity tick range for wstETH/USDC given current vol" | openai-gpt-4o | Range recommendation |
-| 7 | "Estimate optimal LP fee tier for wstETH/USDC in current market" | openai-gpt-4o | Fee recommendation |
-| 8 | "Probability of ETH breaking above $X resistance in 4 hours" | prediction_request | Technical level check |
-| 9 | "Probability of ETH breaking below $Y support in 4 hours" | prediction_request | Support level check |
-| 10 | "Summarize current DeFi market sentiment for ETH ecosystem" | openai-gpt-4o | Sentiment input |
+| 1 | "Probability ETH/USDC price increases next 4 hours?" | `claude-prediction-online` | Direction bias (bull) |
+| 2 | "Probability ETH drops >2% in 4 hours?" | `claude-prediction-online` | Downside risk |
+| 3 | "Probability ETH rises >2% in 4 hours?" | `claude-prediction-online` | Upside probability |
+| 4 | "Estimate ETH implied volatility next 24 hours. Return % only." | `openai-gpt-4o-2024-05-13` | Volatility estimate |
+| 5 | "Optimal tick range [tickLower,tickUpper] for wstETH/USDC LP. Reply as JSON." | `openai-gpt-4o-2024-05-13` | Range recommendation |
+| 6 | "Optimal fee tier (bps) for wstETH/USDC pool. Reply as JSON." | `openai-gpt-4o-2024-05-13` | Fee recommendation |
+| 7 | "Nearest ETH/USD resistance — probability of break in 4 hours?" | `claude-prediction-online` | Technical resistance |
+| 8 | "Nearest ETH/USD support — probability of break below in 4 hours?" | `claude-prediction-online` | Technical support |
+| 9 | "Summarize DeFi market sentiment for ETH ecosystem in 2-3 sentences." | `openai-gpt-4o-2024-05-13` | Sentiment input |
+| 10 | "Should LP rebalance? Narrow/widen/keep. Reply as JSON." | `openai-gpt-4o-2024-05-13` | Rebalance decision |
 
 These results are aggregated and passed to Venice AI as structured context for the final rebalance decision.
 
@@ -479,13 +527,14 @@ The same Locus-managed wallet that funds AgentCash payments can fund mech reques
 
 ## Quick Start Checklist
 
-- [ ] Install mech-client: `pip install mech-client`
-- [ ] Create private key file: `echo -n $AGENT_PRIVATE_KEY > ethereum_private_key.txt`
+- [ ] Install mech-client: `pip install mech-client` (Python >=3.10, <3.15)
+- [ ] Create private key file (no trailing newline): `echo -n $AGENT_PRIVATE_KEY > ethereum_private_key.txt`
 - [ ] Set Base RPC: `export MECHX_CHAIN_RPC=<base_rpc_url>`
-- [ ] Discover mechs: `mechx mech list --chain-config base`
-- [ ] List tools: `mechx tool list <agent_id> --chain-config base`
-- [ ] Test a request: `mechx request --prompts "test" --tools openai-gpt-4o-2024-05-13 --chain-config base --priority-mech <address>`
-- [ ] Deposit funds: `mechx deposit native 0.01 --chain-config base`
-- [ ] Implement mech-client.ts wrapping CLI or off-chain HTTP mode
+- [ ] Discover mechs (use --client-mode BEFORE subcommand): `mechx --client-mode mech list --chain-config base`
+- [ ] List tools: `mechx --client-mode tool list <agent_id> --chain-config base`
+- [ ] Test a request: `mechx --client-mode request --prompts "test" --tools openai-gpt-4o-2024-05-13 --chain-config base --priority-mech <address> --key ethereum_private_key.txt`
+- [ ] Deposit funds: `mechx --client-mode deposit native 0.01 --chain-config base`
+- [ ] Set OLAS_MECH_ADDRESS in .env with discovered address
+- [ ] Implement olas-analyze.ts (shell-out via Node execFile to mechx)
 - [ ] Wire 10+ requests into FSM ANALYZE step
-- [ ] Aggregate results and pass to venice.ts
+- [ ] Aggregate results and pass to venice-analyze.ts
