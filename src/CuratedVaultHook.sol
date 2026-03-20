@@ -59,7 +59,7 @@ contract CuratedVaultHook is BaseHook, IUnlockCallback, ReentrancyGuard {
     event Rebalanced(uint256 indexed curatorId, int24 newTickLower, int24 newTickUpper, uint24 newFee);
     event FeeUpdated(uint24 oldFee, uint24 newFee);
     event SwapTracked(uint256 volume, uint256 feeRevenue);
-    event PerformanceFeeClaimed(uint256 indexed curatorId, address indexed wallet, uint256 amount);
+    event PerformanceFeeClaimed(uint256 indexed curatorId, address indexed wallet, uint256 amount0, uint256 amount1);
 
     /// @dev Dead shares minted to address(1) on first deposit to prevent
     ///      share inflation attacks. See: ERC-4626 inflation attack.
@@ -137,8 +137,11 @@ contract CuratedVaultHook is BaseHook, IUnlockCallback, ReentrancyGuard {
     /// @dev Cumulative approximate fee revenue (token0 denominated).
     uint256 public cumulativeFeeRevenue;
 
-    /// @dev Performance fees accrued and claimable by the active curator (token0 denominated).
-    uint256 public accruedPerformanceFee;
+    /// @dev Performance fees accrued in token0, claimable by the active curator.
+    uint256 public accruedPerformanceFee0;
+
+    /// @dev Performance fees accrued in token1, claimable by the active curator.
+    uint256 public accruedPerformanceFee1;
 
     /// @dev Total number of swaps processed.
     uint256 public totalSwaps;
@@ -168,7 +171,7 @@ contract CuratedVaultHook is BaseHook, IUnlockCallback, ReentrancyGuard {
             beforeDonate: false,
             afterDonate: false,
             beforeSwapReturnDelta: false,
-            afterSwapReturnDelta: false,
+            afterSwapReturnDelta: true,
             afterAddLiquidityReturnDelta: false,
             afterRemoveLiquidityReturnDelta: false
         });
@@ -249,39 +252,76 @@ contract CuratedVaultHook is BaseHook, IUnlockCallback, ReentrancyGuard {
         return (this.beforeSwap.selector, BeforeSwapDeltaLibrary.ZERO_DELTA, fee | LPFeeLibrary.OVERRIDE_FEE_FLAG);
     }
 
-    /// @dev Track cumulative swap volume and approximate fee revenue.
-    function _afterSwap(address, PoolKey calldata, SwapParams calldata params, BalanceDelta delta, bytes calldata)
+    /// @dev Track cumulative swap volume, approximate fee revenue, and pull
+    ///      the curator's performance fee directly from the swap output via
+    ///      afterSwapReturnDelta.
+    function _afterSwap(address, PoolKey calldata key, SwapParams calldata params, BalanceDelta delta, bytes calldata)
         internal
         override
         returns (bytes4, int128)
     {
-        // Compute the absolute swap volume.
-        // delta.amount0() is the change in token0: negative if swapper sold token0,
-        // positive if swapper bought token0.
-        // We use the absolute value of amount0 as the volume measure.
+        // ── Volume & fee-revenue tracking ─────────────────────────────
         int128 amount0 = delta.amount0();
         uint256 volume = amount0 < 0 ? uint256(uint128(-amount0)) : uint256(uint128(amount0));
 
-        // Approximate fee revenue:
-        // The PoolManager already deducted the fee from the swap output.
-        // Fee revenue ≈ volume * currentFee / 1_000_000
-        // (fee is in hundredths of a bip, so 1_000_000 = 100%)
         uint24 currentFee = activeCuratorId != 0 ? curators[activeCuratorId].recommendedFee : DEFAULT_FEE;
-
         uint256 feeRevenue = (volume * uint256(currentFee)) / 1_000_000;
 
         cumulativeVolume += volume;
         cumulativeFeeRevenue += feeRevenue;
         totalSwaps++;
 
-        // Accrue the curator's performance fee share from this swap's revenue.
+        // ── Performance fee: take from the swap via afterSwapReturnDelta ──
+        int128 hookDelta = int128(0);
+
         if (activeCuratorId != 0) {
-            accruedPerformanceFee += (feeRevenue * curators[activeCuratorId].performanceFeeBps) / 10_000;
+            // Determine the unspecified currency (output for exactInput, input for exactOutput).
+            // The hookDelta returned from afterSwap modifies this currency.
+            bool unspecifiedIsCurrency1 = (params.amountSpecified < 0) == params.zeroForOne;
+            Currency unspecifiedCurrency = unspecifiedIsCurrency1 ? key.currency1 : key.currency0;
+
+            // Get the absolute unspecified amount from the swap delta.
+            int128 unspecifiedRaw = unspecifiedIsCurrency1 ? delta.amount1() : delta.amount0();
+            uint256 absUnspecified = unspecifiedRaw > 0
+                ? uint256(uint128(unspecifiedRaw))
+                : uint256(uint128(-unspecifiedRaw));
+
+            // Performance fee = share of the LP fee, denominated in the unspecified currency.
+            //
+            // For exactInput  (amountSpecified < 0): unspecified = output.
+            //   The fee was deducted from the input, so the output is already reduced.
+            //   LP fee ≈ absUnspecified * currentFee / 1_000_000
+            //
+            // For exactOutput (amountSpecified > 0): unspecified = input.
+            //   The input INCLUDES the fee, so we must use (1_000_000 + currentFee)
+            //   to avoid double-counting.
+            //   LP fee ≈ absUnspecified * currentFee / (1_000_000 + currentFee)
+            uint256 feeDenominator = params.amountSpecified < 0
+                ? uint256(1_000_000) * 10_000
+                : uint256(1_000_000 + currentFee) * 10_000;
+
+            uint256 performanceFee = (absUnspecified * uint256(currentFee) * curators[activeCuratorId].performanceFeeBps)
+                / feeDenominator;
+
+            if (performanceFee > 0) {
+                // Pull the fee tokens from the PoolManager into this contract.
+                poolManager.take(unspecifiedCurrency, address(this), performanceFee);
+
+                // Track per-currency accrual.
+                if (unspecifiedIsCurrency1) {
+                    accruedPerformanceFee1 += performanceFee;
+                } else {
+                    accruedPerformanceFee0 += performanceFee;
+                }
+
+                // Positive hookDelta = hook takes from the unspecified side of the swap.
+                hookDelta = int128(uint128(performanceFee));
+            }
         }
 
         emit SwapTracked(volume, feeRevenue);
 
-        return (this.afterSwap.selector, 0);
+        return (this.afterSwap.selector, hookDelta);
     }
 
     // ═════════════════════════════════════════════════════════════════════
@@ -560,8 +600,11 @@ contract CuratedVaultHook is BaseHook, IUnlockCallback, ReentrancyGuard {
             IERC20 token0 = IERC20(Currency.unwrap(poolKey.currency0));
             IERC20 token1 = IERC20(Currency.unwrap(poolKey.currency1));
 
-            uint256 balance0 = token0.balanceOf(address(this));
-            uint256 balance1 = token1.balanceOf(address(this));
+            // Reserve accrued performance fees — they belong to the curator,
+            // not to the LP position. Without this subtraction the fees get
+            // locked into the new position and claimPerformanceFee() reverts.
+            uint256 balance0 = token0.balanceOf(address(this)) - accruedPerformanceFee0;
+            uint256 balance1 = token1.balanceOf(address(this)) - accruedPerformanceFee1;
 
             uint128 newLiquidity = _getLiquidityForAmounts(
                 sqrtPriceX96,
@@ -650,25 +693,29 @@ contract CuratedVaultHook is BaseHook, IUnlockCallback, ReentrancyGuard {
 
     /// @notice Claim accumulated performance fees.
     /// @dev Only callable by the active curator (directly or via MetaMask delegation).
-    ///      Performance fees accrue in token0 from each swap proportional to
-    ///      the curator's performanceFeeBps set at registration.
-    ///      Fees are transferred from the hook's idle token0 balance, which
-    ///      accumulates from collected LP fees during rebalances.
+    ///      Performance fees are pulled from each swap's output via
+    ///      afterSwapReturnDelta and held by this contract in both currencies.
     function claimPerformanceFee() external nonReentrant {
         if (activeCuratorId == 0) revert CuratedVaultHook_NoCuratorSet();
 
         uint256 curatorId = curatorByWallet[msg.sender];
         if (curatorId == 0 || curatorId != activeCuratorId) revert CuratedVaultHook_OnlyCurator();
 
-        uint256 amount = accruedPerformanceFee;
-        if (amount == 0) revert CuratedVaultHook_NoFeesToClaim();
+        uint256 amount0 = accruedPerformanceFee0;
+        uint256 amount1 = accruedPerformanceFee1;
+        if (amount0 == 0 && amount1 == 0) revert CuratedVaultHook_NoFeesToClaim();
 
-        accruedPerformanceFee = 0;
+        accruedPerformanceFee0 = 0;
+        accruedPerformanceFee1 = 0;
 
-        IERC20 token0 = IERC20(Currency.unwrap(poolKey.currency0));
-        token0.safeTransfer(msg.sender, amount);
+        if (amount0 > 0) {
+            IERC20(Currency.unwrap(poolKey.currency0)).safeTransfer(msg.sender, amount0);
+        }
+        if (amount1 > 0) {
+            IERC20(Currency.unwrap(poolKey.currency1)).safeTransfer(msg.sender, amount1);
+        }
 
-        emit PerformanceFeeClaimed(curatorId, msg.sender, amount);
+        emit PerformanceFeeClaimed(curatorId, msg.sender, amount0, amount1);
     }
 
     // ═════════════════════════════════════════════════════════════════════

@@ -292,6 +292,7 @@ contract Finding1ReentrancyTest is Test, Deployers {
                 | Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG
                 | Hooks.BEFORE_SWAP_FLAG
                 | Hooks.AFTER_SWAP_FLAG
+                | Hooks.AFTER_SWAP_RETURNS_DELTA_FLAG
         );
         deployCodeTo("CuratedVaultHook.sol", abi.encode(manager), address(flags));
         hook = CuratedVaultHook(address(flags));
@@ -385,6 +386,7 @@ contract Finding3RebalanceSandwichTest is Test, Deployers {
                 | Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG
                 | Hooks.BEFORE_SWAP_FLAG
                 | Hooks.AFTER_SWAP_FLAG
+                | Hooks.AFTER_SWAP_RETURNS_DELTA_FLAG
         );
         deployCodeTo("CuratedVaultHook.sol", abi.encode(manager), address(flags));
         hook = CuratedVaultHook(address(flags));
@@ -509,6 +511,7 @@ contract Finding4DeadlineTest is Test, Deployers {
                 | Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG
                 | Hooks.BEFORE_SWAP_FLAG
                 | Hooks.AFTER_SWAP_FLAG
+                | Hooks.AFTER_SWAP_RETURNS_DELTA_FLAG
         );
         deployCodeTo("CuratedVaultHook.sol", abi.encode(manager), address(flags));
         hook = CuratedVaultHook(address(flags));
@@ -585,6 +588,7 @@ contract Finding6MinSharesTest is Test, Deployers {
                 | Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG
                 | Hooks.BEFORE_SWAP_FLAG
                 | Hooks.AFTER_SWAP_FLAG
+                | Hooks.AFTER_SWAP_RETURNS_DELTA_FLAG
         );
         deployCodeTo("CuratedVaultHook.sol", abi.encode(manager), address(flags));
         hook = CuratedVaultHook(address(flags));
@@ -667,6 +671,7 @@ contract Finding7SafeERC20Test is Test, Deployers {
                 | Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG
                 | Hooks.BEFORE_SWAP_FLAG
                 | Hooks.AFTER_SWAP_FLAG
+                | Hooks.AFTER_SWAP_RETURNS_DELTA_FLAG
         );
         deployCodeTo("CuratedVaultHook.sol", abi.encode(manager), address(flags));
         hook = CuratedVaultHook(address(flags));
@@ -807,6 +812,7 @@ contract Finding8FeeOnTransferTest is Test, Deployers {
                 | Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG
                 | Hooks.BEFORE_SWAP_FLAG
                 | Hooks.AFTER_SWAP_FLAG
+                | Hooks.AFTER_SWAP_RETURNS_DELTA_FLAG
         );
         deployCodeTo("CuratedVaultHook.sol", abi.encode(manager), address(flags));
         hook = CuratedVaultHook(address(flags));
@@ -840,5 +846,369 @@ contract Finding8FeeOnTransferTest is Test, Deployers {
         vm.prank(alice);
         hook.deposit(10 ether, 10 ether, 0, 0, 0.5 ether, block.timestamp + 1 hours);
         assertGt(vaultShares.balanceOf(alice), 0, "deposit must succeed with fee-on-transfer token");
+    }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+//  Finding #9  — Rebalance deploys accrued performance fees as LP liquidity
+// ═════════════════════════════════════════════════════════════════════════════
+//
+// VULNERABILITY:
+//   rebalance() uses the hook's full token balances (including accrued but
+//   unclaimed performance fees) to calculate newLiquidity. The fees get
+//   locked in the LP position, and a subsequent claimPerformanceFee() either
+//   reverts (insufficient balance) or drains LP principal.
+//
+// FIX:
+//   Subtract accruedPerformanceFee0/1 from the deployable balance in
+//   rebalance() so reserved fees are never re-deployed.
+// ═════════════════════════════════════════════════════════════════════════════
+
+contract Finding9RebalanceDeploysFeesTest is Test, Deployers {
+    using PoolIdLibrary for PoolKey;
+    using StateLibrary for IPoolManager;
+
+    CuratedVaultHook hook;
+    VaultShares vaultShares;
+    PoolKey hookKey;
+
+    MockERC20 token0;
+    MockERC20 token1;
+
+    address alice = makeAddr("alice");
+    address swapper = makeAddr("swapper");
+
+    function setUp() public {
+        deployFreshManagerAndRouters();
+
+        MockERC20 tokenA = new MockERC20("TokenA", "TKA", 18);
+        MockERC20 tokenB = new MockERC20("TokenB", "TKB", 18);
+        (token0, token1) = address(tokenA) < address(tokenB) ? (tokenA, tokenB) : (tokenB, tokenA);
+
+        uint160 flags = uint160(
+            Hooks.AFTER_INITIALIZE_FLAG
+                | Hooks.BEFORE_ADD_LIQUIDITY_FLAG
+                | Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG
+                | Hooks.BEFORE_SWAP_FLAG
+                | Hooks.AFTER_SWAP_FLAG
+                | Hooks.AFTER_SWAP_RETURNS_DELTA_FLAG
+        );
+        deployCodeTo("CuratedVaultHook.sol", abi.encode(manager), address(flags));
+        hook = CuratedVaultHook(address(flags));
+        vaultShares = hook.vaultShares();
+
+        hookKey = PoolKey({
+            currency0: Currency.wrap(address(token0)),
+            currency1: Currency.wrap(address(token1)),
+            fee: 0x800000,
+            tickSpacing: 60,
+            hooks: IHooks(address(hook))
+        });
+        manager.initialize(hookKey, TickMath.getSqrtPriceAtTick(0));
+
+        // Fund alice (LP + curator)
+        token0.mint(alice, 100 ether);
+        token1.mint(alice, 100 ether);
+        vm.startPrank(alice);
+        token0.approve(address(hook), type(uint256).max);
+        token1.approve(address(hook), type(uint256).max);
+        vm.stopPrank();
+
+        // Fund swapper
+        token0.mint(swapper, 100 ether);
+        token1.mint(swapper, 100 ether);
+        vm.startPrank(swapper);
+        token0.approve(address(swapRouter), type(uint256).max);
+        token1.approve(address(swapRouter), type(uint256).max);
+        vm.stopPrank();
+
+        // Register alice as curator (10% performance fee)
+        address identityRegistry = address(0x8004A818BFB912233c491871b3d84c89A494BD9e);
+        vm.mockCall(identityRegistry, abi.encodeWithSignature("ownerOf(uint256)", 1), abi.encode(alice));
+        vm.prank(alice);
+        hook.registerCurator(1000, 1);
+    }
+
+    /// @notice FAILS without fix: rebalance() deploys the accrued performance fee
+    ///         tokens as LP liquidity, so claimPerformanceFee() reverts because the
+    ///         hook no longer holds enough tokens.
+    ///         PASSES after fix: rebalance() excludes accrued fees from the
+    ///         deployable balance, so claim always succeeds.
+    function test_finding9_claimSucceedsAfterRebalance() public {
+        // ── Step 1: Deposit liquidity ─────────────────────────────────
+        vm.prank(alice);
+        hook.deposit(10 ether, 10 ether, 0, 0, 5 ether, type(uint256).max);
+
+        // ── Step 2: Generate swap volume → accrues performance fees ───
+        // Run several large swaps in both directions so fees accrue in
+        // both token0 and token1.
+        vm.startPrank(swapper);
+        for (uint256 i = 0; i < 5; i++) {
+            swapRouter.swap(
+                hookKey,
+                SwapParams({
+                    zeroForOne: true,
+                    amountSpecified: -1 ether,
+                    sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
+                }),
+                PoolSwapTest.TestSettings({ takeClaims: false, settleUsingBurn: false }),
+                ""
+            );
+            swapRouter.swap(
+                hookKey,
+                SwapParams({
+                    zeroForOne: false,
+                    amountSpecified: -1 ether,
+                    sqrtPriceLimitX96: TickMath.MAX_SQRT_PRICE - 1
+                }),
+                PoolSwapTest.TestSettings({ takeClaims: false, settleUsingBurn: false }),
+                ""
+            );
+        }
+        vm.stopPrank();
+
+        uint256 fee0Before = hook.accruedPerformanceFee0();
+        uint256 fee1Before = hook.accruedPerformanceFee1();
+        assertGt(fee0Before + fee1Before, 0, "fees should have accrued");
+
+        // ── Step 3: Rebalance — this is where the bug manifests ───────
+        // The hook removes all liquidity, holds tokens + accrued fees,
+        // then re-deploys everything. Without the fix, accrued fee tokens
+        // get locked into the new LP position.
+        vm.roll(block.number + 31);
+        vm.prank(alice);
+        hook.rebalance(-1200, 1200, 5000, type(uint256).max, type(uint256).max);
+
+        // Fees must still be fully accrued (rebalance should not touch them)
+        assertEq(hook.accruedPerformanceFee0(), fee0Before, "fee0 must survive rebalance");
+        assertEq(hook.accruedPerformanceFee1(), fee1Before, "fee1 must survive rebalance");
+
+        // ── Step 4: Claim must succeed ────────────────────────────────
+        // Without the fix this reverts with arithmetic underflow because
+        // the hook's idle balance is less than accruedPerformanceFee.
+        uint256 aliceToken0Before = token0.balanceOf(alice);
+        uint256 aliceToken1Before = token1.balanceOf(alice);
+
+        vm.prank(alice);
+        hook.claimPerformanceFee();
+
+        assertEq(
+            token0.balanceOf(alice) - aliceToken0Before,
+            fee0Before,
+            "curator must receive full fee0"
+        );
+        assertEq(
+            token1.balanceOf(alice) - aliceToken1Before,
+            fee1Before,
+            "curator must receive full fee1"
+        );
+    }
+
+    /// @notice Same bug as above but demonstrated via a balance invariant rather
+    ///         than a revert. After rebalance the hook's idle balance for each
+    ///         currency must be >= the accrued performance fees. Without the fix,
+    ///         rebalance re-deploys the fee tokens as LP liquidity, violating
+    ///         this invariant.
+    ///
+    ///         FAILS without fix: idle balance < accrued fees.
+    ///         PASSES after fix: rebalance reserves the fee tokens.
+    function test_finding9_claimSucceedsAfterRebalanceHighFee() public {
+        // ── Step 1: Deposit liquidity ─────────────────────────────────
+        vm.prank(alice);
+        hook.deposit(10 ether, 10 ether, 0, 0, 5 ether, type(uint256).max);
+
+        // ── Step 2: Rebalance to a tight range with higher fee ────────
+        // A tight range + higher fee maximises the fee tokens relative
+        // to idle rounding, making the bug reliably observable.
+        vm.roll(block.number + 31);
+        vm.prank(alice);
+        hook.rebalance(-600, 600, 10000, type(uint256).max, type(uint256).max); // 1% fee
+
+        // ── Step 3: Heavy swap volume → large accrued fees ────────────
+        vm.startPrank(swapper);
+        for (uint256 i = 0; i < 10; i++) {
+            swapRouter.swap(
+                hookKey,
+                SwapParams({
+                    zeroForOne: true,
+                    amountSpecified: -2 ether,
+                    sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
+                }),
+                PoolSwapTest.TestSettings({ takeClaims: false, settleUsingBurn: false }),
+                ""
+            );
+            swapRouter.swap(
+                hookKey,
+                SwapParams({
+                    zeroForOne: false,
+                    amountSpecified: -2 ether,
+                    sqrtPriceLimitX96: TickMath.MAX_SQRT_PRICE - 1
+                }),
+                PoolSwapTest.TestSettings({ takeClaims: false, settleUsingBurn: false }),
+                ""
+            );
+        }
+        vm.stopPrank();
+
+        uint256 fee0 = hook.accruedPerformanceFee0();
+        uint256 fee1 = hook.accruedPerformanceFee1();
+        assertGt(fee0 + fee1, 0, "fees should have accrued");
+
+        // ── Step 4: Second rebalance consumes the fee tokens ──────────
+        vm.roll(block.number + 100);
+        vm.prank(alice);
+        hook.rebalance(-1200, 1200, 5000, type(uint256).max, type(uint256).max);
+
+        // ── Step 5: Claim — should succeed but reverts without fix ────
+        uint256 aliceToken0Before = token0.balanceOf(alice);
+        uint256 aliceToken1Before = token1.balanceOf(alice);
+
+        vm.prank(alice);
+        hook.claimPerformanceFee();
+
+        assertEq(
+            token0.balanceOf(alice) - aliceToken0Before,
+            fee0,
+            "curator must receive full fee0"
+        );
+        assertEq(
+            token1.balanceOf(alice) - aliceToken1Before,
+            fee1,
+            "curator must receive full fee1"
+        );
+    }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+//  Finding #10 — Performance fee approximation overestimates LP fee revenue
+// ═════════════════════════════════════════════════════════════════════════════
+//
+// VULNERABILITY:
+//   _afterSwap computes:
+//     performanceFee = absUnspecified * currentFee * performanceFeeBps
+//                      / (1_000_000 * 10_000)
+//   This overestimates the actual LP fee because:
+//   - For exactInput:  the output already reflects the fee deduction, so the
+//     correct denominator is (1_000_000 - currentFee) * 10_000.
+//   - For exactOutput: the input includes the fee, so the correct denominator
+//     is (1_000_000 + currentFee) * 10_000.
+//   At high fee rates (MAX_FEE = 10%) the overstatement is ~10% of the
+//   performance fee itself.
+//
+// FIX:
+//   Use the correct denominator based on exactInput vs exactOutput.
+// ═════════════════════════════════════════════════════════════════════════════
+
+contract Finding10FeeOverestimationTest is Test, Deployers {
+    using PoolIdLibrary for PoolKey;
+    using StateLibrary for IPoolManager;
+
+    CuratedVaultHook hook;
+    VaultShares vaultShares;
+    PoolKey hookKey;
+
+    MockERC20 token0;
+    MockERC20 token1;
+
+    address alice = makeAddr("alice");
+    address swapper = makeAddr("swapper");
+
+    function setUp() public {
+        deployFreshManagerAndRouters();
+
+        MockERC20 tokenA = new MockERC20("TokenA", "TKA", 18);
+        MockERC20 tokenB = new MockERC20("TokenB", "TKB", 18);
+        (token0, token1) = address(tokenA) < address(tokenB) ? (tokenA, tokenB) : (tokenB, tokenA);
+
+        uint160 flags = uint160(
+            Hooks.AFTER_INITIALIZE_FLAG
+                | Hooks.BEFORE_ADD_LIQUIDITY_FLAG
+                | Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG
+                | Hooks.BEFORE_SWAP_FLAG
+                | Hooks.AFTER_SWAP_FLAG
+                | Hooks.AFTER_SWAP_RETURNS_DELTA_FLAG
+        );
+        deployCodeTo("CuratedVaultHook.sol", abi.encode(manager), address(flags));
+        hook = CuratedVaultHook(address(flags));
+        vaultShares = hook.vaultShares();
+
+        hookKey = PoolKey({
+            currency0: Currency.wrap(address(token0)),
+            currency1: Currency.wrap(address(token1)),
+            fee: 0x800000,
+            tickSpacing: 60,
+            hooks: IHooks(address(hook))
+        });
+        manager.initialize(hookKey, TickMath.getSqrtPriceAtTick(0));
+
+        token0.mint(alice, 100 ether);
+        token1.mint(alice, 100 ether);
+        vm.startPrank(alice);
+        token0.approve(address(hook), type(uint256).max);
+        token1.approve(address(hook), type(uint256).max);
+        vm.stopPrank();
+
+        token0.mint(swapper, 100 ether);
+        token1.mint(swapper, 100 ether);
+        vm.startPrank(swapper);
+        token0.approve(address(swapRouter), type(uint256).max);
+        token1.approve(address(swapRouter), type(uint256).max);
+        vm.stopPrank();
+
+        // Register alice as curator with MAX performance fee (20%) to amplify the error
+        address identityRegistry = address(0x8004A818BFB912233c491871b3d84c89A494BD9e);
+        vm.mockCall(identityRegistry, abi.encodeWithSignature("ownerOf(uint256)", 1), abi.encode(alice));
+        vm.prank(alice);
+        hook.registerCurator(2000, 1); // 20% performance fee
+    }
+
+    /// @notice For exactOutput swaps the unspecified amount is the input (which
+    ///         includes the LP fee). The buggy formula applies fee/1e6 to the
+    ///         fee-inclusive input, double-counting. The correct formula uses
+    ///         fee/(1e6 + fee) for the input side.
+    ///
+    ///         FAILS without fix: accrued fee exceeds the correct bound.
+    ///         PASSES after fix: formula uses the correct denominator.
+    function test_finding10_exactOutputFeeNotDoubleCounted() public {
+        vm.prank(alice);
+        hook.deposit(50 ether, 50 ether, 0, 0, 25 ether, type(uint256).max);
+
+        vm.roll(block.number + 31);
+        vm.prank(alice);
+        hook.rebalance(-600, 600, 100000, type(uint256).max, type(uint256).max); // 10% fee
+
+        // ExactOutput swap: swapper wants exactly 0.01 ether of token1
+        uint256 desiredOutput = 0.01 ether;
+        uint256 swapperToken0Before = token0.balanceOf(swapper);
+
+        vm.prank(swapper);
+        swapRouter.swap(
+            hookKey,
+            SwapParams({
+                zeroForOne: true,
+                amountSpecified: int256(desiredOutput), // positive = exactOutput
+                sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
+            }),
+            PoolSwapTest.TestSettings({ takeClaims: false, settleUsingBurn: false }),
+            ""
+        );
+
+        // The actual input the swapper paid (unspecified side for exactOutput)
+        uint256 actualInput = swapperToken0Before - token0.balanceOf(swapper);
+
+        // Correct performance fee from the input side:
+        //   lpFee = actualInput * fee / (1e6 + fee)
+        //   perfFee = lpFee * performanceFeeBps / 10_000
+        uint256 correctMaxFee = (actualInput * 100_000 * 2000)
+            / (uint256(1_000_000 + 100_000) * 10_000);
+        uint256 tolerance = correctMaxFee / 100; // 1%
+
+        // For exactOutput+zeroForOne, the unspecified side is currency0 (the input)
+        uint256 actualFee0 = hook.accruedPerformanceFee0();
+        assertLe(
+            actualFee0,
+            correctMaxFee + tolerance,
+            "exactOutput performance fee must not double-count"
+        );
     }
 }

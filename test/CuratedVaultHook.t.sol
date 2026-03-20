@@ -45,7 +45,8 @@ contract CuratedVaultHookTest is Test, Deployers {
             Hooks.BEFORE_ADD_LIQUIDITY_FLAG |
             Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG |
             Hooks.BEFORE_SWAP_FLAG |
-            Hooks.AFTER_SWAP_FLAG
+            Hooks.AFTER_SWAP_FLAG |
+            Hooks.AFTER_SWAP_RETURNS_DELTA_FLAG
         );
 
         // Use vm.etch for testing — bypasses address mining.
@@ -362,9 +363,10 @@ function test_dynamicFeeApplied() public {
     // Swapper should have received token1 (less than 0.1 ether due to fee)
     uint256 received = token1After - token1Before;
     assertGt(received, 0);
-    // With a 0.30% fee, received should be roughly 0.1 * 0.997 = 0.0997 ether
-    // Allow 1% tolerance for concentrated liquidity math
-    assertApproxEqRel(received, 0.0997 ether, 0.01e18);
+    // With a 0.30% LP fee + curator performance fee (10% of LP fee ≈ 0.03%),
+    // received should be roughly 0.1 * 0.997 * (1 - 0.0003) ≈ 0.09967 ether.
+    // Allow 2% tolerance for concentrated liquidity math + performance fee.
+    assertApproxEqRel(received, 0.0997 ether, 0.02e18);
 
     // Fee tracking should be updated
     assertGt(hook.cumulativeVolume(), 0);
@@ -540,6 +542,351 @@ function test_invalidFeeReverts() public {
     vm.prank(alice);
     vm.expectRevert(CuratedVaultHook.CuratedVaultHook_InvalidFee.selector);
     hook.rebalance(-600, 600, 100001, 0, 0);
+}
+
+// ─── Test: Claim performance fee after zeroForOne swap ────────────
+
+function test_claimPerformanceFee_zeroForOne() public {
+    _registerAliceAsCurator();
+
+    // Deposit liquidity
+    vm.prank(alice);
+    hook.deposit(10 ether, 10 ether, 0, 0, 5 ether, type(uint256).max);
+
+    // Perform a zeroForOne swap (output is token1)
+    address swapper = makeAddr("swapper");
+    token0.mint(swapper, 1 ether);
+    vm.startPrank(swapper);
+    token0.approve(address(swapRouter), type(uint256).max);
+    swapRouter.swap(
+        key,
+        SwapParams({
+            zeroForOne: true,
+            amountSpecified: -0.1 ether,
+            sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
+        }),
+        PoolSwapTest.TestSettings({ takeClaims: false, settleUsingBurn: false }),
+        ""
+    );
+    vm.stopPrank();
+
+    // Fees should have accrued in token1 (the output currency)
+    assertEq(hook.accruedPerformanceFee0(), 0);
+    assertGt(hook.accruedPerformanceFee1(), 0);
+
+    // The hook should hold the fee tokens
+    uint256 hookToken1Balance = token1.balanceOf(address(hook));
+    assertGe(hookToken1Balance, hook.accruedPerformanceFee1());
+
+    // Curator claims
+    uint256 aliceToken1Before = token1.balanceOf(alice);
+    uint256 expectedFee1 = hook.accruedPerformanceFee1();
+
+    vm.prank(alice);
+    hook.claimPerformanceFee();
+
+    // Alice received the fee tokens
+    assertEq(token1.balanceOf(alice) - aliceToken1Before, expectedFee1);
+
+    // Accumulators reset
+    assertEq(hook.accruedPerformanceFee0(), 0);
+    assertEq(hook.accruedPerformanceFee1(), 0);
+}
+
+// ─── Test: Claim performance fee after reverse swap ───────────────
+
+function test_claimPerformanceFee_oneForZero() public {
+    _registerAliceAsCurator();
+
+    vm.prank(alice);
+    hook.deposit(10 ether, 10 ether, 0, 0, 5 ether, type(uint256).max);
+
+    // Perform a oneForZero swap (output is token0)
+    address swapper = makeAddr("swapper");
+    token1.mint(swapper, 1 ether);
+    vm.startPrank(swapper);
+    token1.approve(address(swapRouter), type(uint256).max);
+    swapRouter.swap(
+        key,
+        SwapParams({
+            zeroForOne: false,
+            amountSpecified: -0.1 ether,
+            sqrtPriceLimitX96: TickMath.MAX_SQRT_PRICE - 1
+        }),
+        PoolSwapTest.TestSettings({ takeClaims: false, settleUsingBurn: false }),
+        ""
+    );
+    vm.stopPrank();
+
+    // Fees should have accrued in token0 (the output currency)
+    assertGt(hook.accruedPerformanceFee0(), 0);
+    assertEq(hook.accruedPerformanceFee1(), 0);
+
+    uint256 aliceToken0Before = token0.balanceOf(alice);
+    uint256 expectedFee0 = hook.accruedPerformanceFee0();
+
+    vm.prank(alice);
+    hook.claimPerformanceFee();
+
+    assertEq(token0.balanceOf(alice) - aliceToken0Before, expectedFee0);
+    assertEq(hook.accruedPerformanceFee0(), 0);
+}
+
+// ─── Test: Fees accumulate across multiple swaps in both currencies ─
+
+function test_claimPerformanceFee_bothCurrencies() public {
+    _registerAliceAsCurator();
+
+    vm.prank(alice);
+    hook.deposit(10 ether, 10 ether, 0, 0, 5 ether, type(uint256).max);
+
+    address swapper = makeAddr("swapper");
+    token0.mint(swapper, 1 ether);
+    token1.mint(swapper, 1 ether);
+    vm.startPrank(swapper);
+    token0.approve(address(swapRouter), type(uint256).max);
+    token1.approve(address(swapRouter), type(uint256).max);
+
+    // Swap 1: zeroForOne → fees in token1
+    swapRouter.swap(
+        key,
+        SwapParams({
+            zeroForOne: true,
+            amountSpecified: -0.1 ether,
+            sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
+        }),
+        PoolSwapTest.TestSettings({ takeClaims: false, settleUsingBurn: false }),
+        ""
+    );
+
+    // Swap 2: oneForZero → fees in token0
+    swapRouter.swap(
+        key,
+        SwapParams({
+            zeroForOne: false,
+            amountSpecified: -0.1 ether,
+            sqrtPriceLimitX96: TickMath.MAX_SQRT_PRICE - 1
+        }),
+        PoolSwapTest.TestSettings({ takeClaims: false, settleUsingBurn: false }),
+        ""
+    );
+    vm.stopPrank();
+
+    // Both accumulators should have fees
+    assertGt(hook.accruedPerformanceFee0(), 0);
+    assertGt(hook.accruedPerformanceFee1(), 0);
+
+    uint256 aliceToken0Before = token0.balanceOf(alice);
+    uint256 aliceToken1Before = token1.balanceOf(alice);
+    uint256 expectedFee0 = hook.accruedPerformanceFee0();
+    uint256 expectedFee1 = hook.accruedPerformanceFee1();
+
+    vm.prank(alice);
+    hook.claimPerformanceFee();
+
+    assertEq(token0.balanceOf(alice) - aliceToken0Before, expectedFee0);
+    assertEq(token1.balanceOf(alice) - aliceToken1Before, expectedFee1);
+    assertEq(hook.accruedPerformanceFee0(), 0);
+    assertEq(hook.accruedPerformanceFee1(), 0);
+}
+
+// ─── Test: Multiple swaps accumulate before single claim ──────────
+
+function test_claimPerformanceFee_accumulatesAcrossSwaps() public {
+    _registerAliceAsCurator();
+
+    vm.prank(alice);
+    hook.deposit(10 ether, 10 ether, 0, 0, 5 ether, type(uint256).max);
+
+    address swapper = makeAddr("swapper");
+    token0.mint(swapper, 1 ether);
+    vm.startPrank(swapper);
+    token0.approve(address(swapRouter), type(uint256).max);
+
+    // Three identical swaps
+    for (uint256 i = 0; i < 3; i++) {
+        swapRouter.swap(
+            key,
+            SwapParams({
+                zeroForOne: true,
+                amountSpecified: -0.01 ether,
+                sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
+            }),
+            PoolSwapTest.TestSettings({ takeClaims: false, settleUsingBurn: false }),
+            ""
+        );
+    }
+    vm.stopPrank();
+
+    // Fees should have accumulated from all 3 swaps
+    uint256 totalFee1 = hook.accruedPerformanceFee1();
+    assertGt(totalFee1, 0);
+    assertEq(hook.totalSwaps(), 3);
+
+    // Claim all at once
+    uint256 aliceToken1Before = token1.balanceOf(alice);
+    vm.prank(alice);
+    hook.claimPerformanceFee();
+
+    assertEq(token1.balanceOf(alice) - aliceToken1Before, totalFee1);
+}
+
+// ─── Test: Claim with no fees reverts ─────────────────────────────
+
+function test_claimPerformanceFee_noFeesReverts() public {
+    _registerAliceAsCurator();
+
+    vm.prank(alice);
+    vm.expectRevert(CuratedVaultHook.CuratedVaultHook_NoFeesToClaim.selector);
+    hook.claimPerformanceFee();
+}
+
+// ─── Test: Non-curator cannot claim ───────────────────────────────
+
+function test_claimPerformanceFee_nonCuratorReverts() public {
+    _registerAliceAsCurator();
+
+    vm.prank(alice);
+    hook.deposit(10 ether, 10 ether, 0, 0, 5 ether, type(uint256).max);
+
+    // Generate fees
+    address swapper = makeAddr("swapper");
+    token0.mint(swapper, 1 ether);
+    vm.startPrank(swapper);
+    token0.approve(address(swapRouter), type(uint256).max);
+    swapRouter.swap(
+        key,
+        SwapParams({
+            zeroForOne: true,
+            amountSpecified: -0.1 ether,
+            sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
+        }),
+        PoolSwapTest.TestSettings({ takeClaims: false, settleUsingBurn: false }),
+        ""
+    );
+    vm.stopPrank();
+
+    assertGt(hook.accruedPerformanceFee1(), 0);
+
+    // Bob is not the curator
+    vm.prank(bob);
+    vm.expectRevert(CuratedVaultHook.CuratedVaultHook_OnlyCurator.selector);
+    hook.claimPerformanceFee();
+}
+
+// ─── Test: Claim with no curator set reverts ──────────────────────
+
+function test_claimPerformanceFee_noCuratorReverts() public {
+    vm.prank(alice);
+    vm.expectRevert(CuratedVaultHook.CuratedVaultHook_NoCuratorSet.selector);
+    hook.claimPerformanceFee();
+}
+
+// ─── Test: Double claim reverts (no new fees) ─────────────────────
+
+function test_claimPerformanceFee_doubleClaimReverts() public {
+    _registerAliceAsCurator();
+
+    vm.prank(alice);
+    hook.deposit(10 ether, 10 ether, 0, 0, 5 ether, type(uint256).max);
+
+    // Generate fees
+    address swapper = makeAddr("swapper");
+    token0.mint(swapper, 1 ether);
+    vm.startPrank(swapper);
+    token0.approve(address(swapRouter), type(uint256).max);
+    swapRouter.swap(
+        key,
+        SwapParams({
+            zeroForOne: true,
+            amountSpecified: -0.1 ether,
+            sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
+        }),
+        PoolSwapTest.TestSettings({ takeClaims: false, settleUsingBurn: false }),
+        ""
+    );
+    vm.stopPrank();
+
+    // First claim succeeds
+    vm.prank(alice);
+    hook.claimPerformanceFee();
+
+    // Second claim reverts — no new fees
+    vm.prank(alice);
+    vm.expectRevert(CuratedVaultHook.CuratedVaultHook_NoFeesToClaim.selector);
+    hook.claimPerformanceFee();
+}
+
+// ─── Test: Claim after rebalance + swap works ─────────────────────
+
+function test_claimPerformanceFee_afterRebalance() public {
+    _registerAliceAsCurator();
+
+    vm.prank(alice);
+    hook.deposit(10 ether, 10 ether, 0, 0, 5 ether, type(uint256).max);
+
+    // Rebalance to tighter range with higher fee
+    vm.roll(block.number + 31);
+    vm.prank(alice);
+    hook.rebalance(-1200, 1200, 10000, type(uint256).max, type(uint256).max); // 1% fee
+
+    // Swap generates fees at the new fee rate
+    address swapper = makeAddr("swapper");
+    token0.mint(swapper, 1 ether);
+    vm.startPrank(swapper);
+    token0.approve(address(swapRouter), type(uint256).max);
+    swapRouter.swap(
+        key,
+        SwapParams({
+            zeroForOne: true,
+            amountSpecified: -0.1 ether,
+            sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
+        }),
+        PoolSwapTest.TestSettings({ takeClaims: false, settleUsingBurn: false }),
+        ""
+    );
+    vm.stopPrank();
+
+    // Fees at 1% LP fee should be larger than at 0.3%
+    uint256 fee1 = hook.accruedPerformanceFee1();
+    assertGt(fee1, 0);
+
+    // Claim succeeds
+    uint256 aliceToken1Before = token1.balanceOf(alice);
+    vm.prank(alice);
+    hook.claimPerformanceFee();
+
+    assertEq(token1.balanceOf(alice) - aliceToken1Before, fee1);
+}
+
+// ─── Test: No fees accrue without a curator ───────────────────────
+
+function test_noPerformanceFeeWithoutCurator() public {
+    // Deposit without registering a curator
+    vm.prank(alice);
+    hook.deposit(10 ether, 10 ether, 0, 0, 5 ether, type(uint256).max);
+
+    // Swap
+    address swapper = makeAddr("swapper");
+    token0.mint(swapper, 1 ether);
+    vm.startPrank(swapper);
+    token0.approve(address(swapRouter), type(uint256).max);
+    swapRouter.swap(
+        key,
+        SwapParams({
+            zeroForOne: true,
+            amountSpecified: -0.1 ether,
+            sqrtPriceLimitX96: TickMath.MIN_SQRT_PRICE + 1
+        }),
+        PoolSwapTest.TestSettings({ takeClaims: false, settleUsingBurn: false }),
+        ""
+    );
+    vm.stopPrank();
+
+    // Volume tracked but no performance fee accrued
+    assertGt(hook.cumulativeVolume(), 0);
+    assertEq(hook.accruedPerformanceFee0(), 0);
+    assertEq(hook.accruedPerformanceFee1(), 0);
 }
 
 // ─── Test: Deposit + Rebalance + Swap + Withdraw full cycle ──────
