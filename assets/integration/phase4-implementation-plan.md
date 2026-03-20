@@ -458,6 +458,126 @@ packaging for the EigenCloud bounty.
 
 ---
 
+## Two-Person Parallel Work Division
+
+### Shared Setup (Step 1)
+
+Both people build Step 1 (foundation libs) together. Agree on the JSON
+output contracts in types.ts before diverging — each tool's output
+shape must match what the SKILL.md documents.
+
+### Person A — OBSERVE + Paid ANALYZE (Steps 2, 4)
+
+| Tool | Notes |
+|---|---|
+| check-budget | OBSERVE phase. Small, quick. Unblocks budget-adaptive reasoning. |
+| olas-analyze | ANALYZE phase. Paid via Locus. Independent of Person B. |
+
+### Person B — Free ANALYZE + Intelligence + Verifiability (Steps 3, 5, 6, 7)
+
+| Tool | Notes |
+|---|---|
+| uniswap-data | ANALYZE phase. Free, 4 API calls. Independent of Person A. |
+| venice-analyze | ANALYZE phase. Start with hardcoded test data for Olas input. |
+| eigencompute | Wraps venice-analyze in TEE. Must come after venice-analyze. |
+| Dockerfile | EigenCloud bounty deliverable. Packages venice-analyze. |
+
+### Why there's zero cross-person blocking
+
+```
+  Person A                          Person B
+  +--------------------------+      +--------------------------+
+  |                          |      |                          |
+  | check-budget             |      | uniswap-data             |
+  | olas-analyze             |      | venice-analyze            |
+  | (parallel, independent)  |      | (start with test data)    |
+  |                          |      |                          |
+  | 2 tools                  |      | Then:                    |
+  |                          |      | eigencompute             |
+  |                          |      | Dockerfile               |
+  |                          |      |                          |
+  |                          |      | 4 deliverables           |
+  +--------------------------+      +--------------------------+
+           |                                 |
+           +----------------+----------------+
+                            |
+                            v
+               Update SKILL.md together
+               Integration test together
+```
+
+Person A never waits on Person B. Person B never waits on Person A.
+Person B tests venice-analyze with a fake Olas JSON until Person A's
+olas-analyze is ready. Person A tests olas-analyze without caring
+about Venice. Both work fine in isolation.
+
+### How Each Person Tests Their Tools
+
+**Person A testing (check-budget, olas-analyze):**
+
+| Tool | Standalone test | OpenClaw test |
+|---|---|---|
+| check-budget | Run `bun run src/tools/check-budget.ts`. Confirm balance and canSpend fields returned. | Add to SKILL.md OBSERVE phase. Run heartbeat. Verify agent reads budget and references it in reasoning ("Budget is $4.20, can afford Olas"). |
+| olas-analyze | Run `bun run src/tools/olas-analyze.ts --pool '<json from pool-reader>'`. Confirm 10+ results, tx hashes in payment-log.json. | Add to SKILL.md ANALYZE phase. Run heartbeat. Verify agent invokes olas after checking budget. If budget is low, verify agent skips Olas and explains why. |
+
+Person A validates budget-adaptive behavior: run a heartbeat with full
+budget (agent fetches Olas), then drain the Locus wallet and run
+another heartbeat (agent skips Olas, uses cache). Two different
+decisions from the same agent proves autonomous reasoning.
+
+**Person B testing (uniswap-data, venice-analyze, eigencompute):**
+
+| Tool | Standalone test | OpenClaw test |
+|---|---|---|
+| uniswap-data | Run `bun run src/tools/uniswap-data.ts`. Confirm forwardPrice, spread, priceImpact, 4 requestIds. | Add to SKILL.md ANALYZE phase. Run heartbeat. Verify agent references specific numbers: "Spread is 8 bps, depth is moderate." |
+| venice-analyze | Run `bun run src/tools/venice-analyze.ts --pool '<json>' --uniswap '<json>'`. Test with and without --olas arg to verify partial data handling. | Add to SKILL.md ANALYZE phase. Run heartbeat. Verify agent gathers uniswap-data, passes to venice-analyze, reads confidence, decides to act or skip. |
+| eigencompute | Build Docker image. Run `docker run curatedlp/venice-analyzer --pool '<json>'`. Deploy to EigenCompute, verify attestation hash returned. | Add to SKILL.md as alternative to venice-analyze. Run heartbeat. Verify agent uses eigencompute, logs attestation hash in REFLECT. |
+
+Person B validates the intelligence pipeline: run a heartbeat where
+Venice recommends a meaningful change (agent rebalances), then run
+another where Venice has low confidence (agent skips). Verify Venice
+references the exact spread and depth numbers from uniswap-data in
+its reasoning, not generic language.
+
+### What neither person can test alone
+
+The full pipeline where olas-analyze output (Person A) feeds into
+venice-analyze input (Person B). This only works when both merge:
+
+```
+  pool-reader (existing)
+       +
+  check-budget (Person A)
+       +
+  uniswap-data (Person B)         — structured price/spread/depth
+       +
+  olas-analyze (Person A)          — predictions/sentiment
+       |
+       +--- all feed into --->
+       |
+  venice-analyze (Person B)        — recommendation
+       |
+  eigencompute (Person B)          — attestation
+       |
+  execute-rebalance (existing)     — on-chain action
+```
+
+Until that merge point, each person tests their tools with hardcoded
+data standing in for the other person's output. After both merge,
+they run the full incremental OpenClaw integration test together
+(Phase 4a → 4b → 4c → 4d → 4e) and the end-to-end verification.
+
+### Integration (Both — Steps 8, 9)
+
+| Step | What | Blocked by |
+|---|---|---|
+| 8 | Update SKILL.md (final review) | All tools from both people pass isolation tests |
+| 9 | End-to-end OpenClaw integration test | Step 8 |
+
+Done together once both tracks are merged.
+
+---
+
 ## Step-by-Step Implementation
 
 ### Step 1: Foundation Libraries
