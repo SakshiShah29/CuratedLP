@@ -19,13 +19,13 @@ on it. EigenCloud ($5,000) replaces it as the new bounty target.
 | Aspect | Original Plan | Revised Plan |
 |---|---|---|
 | `market-data.ts` (AgentCash x402) | Core tool, 3-4 paid API calls/cycle | **REMOVED entirely** |
-| `uniswap-quote.ts` | Single quote call (1 API call/cycle) | **EXPANDED → `uniswap-data.ts` (4 API calls/cycle: forward, reverse, large, approval)** |
+| `uniswap-quote.ts` | Single quote call (1 API call/cycle) | **EXPANDED → `uniswap-data.ts` (4 Uniswap API calls + DeFiLlama on-chain analytics per cycle)** |
 | `eigencompute.ts` | Did not exist | **NEW — wraps Venice inference in a TEE** |
-| Data pipeline | x402 endpoints for price/vol/sentiment | **Uniswap API × 4 calls for price/spread/depth + Olas Mech for predictions** |
-| Venice web search | Not used | **OFF — Venice receives structured data, not web prose** |
+| Data pipeline | x402 endpoints for price/vol/sentiment | **Uniswap API × 4 calls for price/spread/depth + DeFiLlama for on-chain analytics + Venice web search for sentiment + Olas Mech for cross-checking** |
+| Venice web search | Not used | **TWO-CALL PIPELINE — Call #1: web search ON for sentiment. Call #2: web search OFF for analysis with all structured data** |
 | Bounty: Merit/x402 ($5,250) | Targeted | **DROPPED** |
 | Bounty: EigenCloud ($5,000) | Not targeted | **NEW TARGET** |
-| Uniswap API depth | 1 requestId per cycle | **4 requestIds per cycle (1,152+/day)** |
+| Uniswap API depth | 1 requestId per cycle | **4 requestIds per cycle (1,152+/day) + DeFiLlama analytics** |
 | Total Phase 4 bounty value | $20,750 | **$20,500** (nearly identical) |
 | Locus spending | Pays for x402 + Olas | Pays for Olas Mech requests only |
 | Tool count | 8 | **8** (pool-reader, check-budget, uniswap-data, eigencompute, olas-analyze, venice-analyze, execute-rebalance, claim-fees) |
@@ -129,13 +129,20 @@ not parts of a state machine.
        |   uniswap-data ---------> Uniswap Trading API × 4 calls (NEW, free)
        |     \-- forward quote (wstETH→USDC price)
        |     \-- reverse quote (USDC→wstETH price → bid/ask spread)
-       |     \-- small quote (price impact → liquidity depth)
+       |     \-- large quote (price impact → liquidity depth)
        |     \-- check_approval (vault token approval status)
+       |     \-- DeFiLlama on-chain analytics (TVL, yields, protocol flows)
+       |   venice-sentiment -----> Venice AI API, web search ON (NEW, free)
+       |     \-- "Summarize wstETH/USDC sentiment: social signals,
+       |          governance news, whale movements, market mood"
+       |     \-- Returns structured sentiment JSON
+       |   venice-analyze -------> Venice AI API, web search OFF (NEW, free)
+       |     \-- receives: pool state + uniswap data + DeFiLlama + sentiment
+       |     \-- enable_web_search: "off" (has all data already)
+       |     \-- wrapped in eigencompute for verifiability
        |   olas-analyze ---------> Olas Mech Marketplace (NEW, paid via Locus)
-       |   venice-analyze -------> Venice AI API (NEW)
-       |     \-- receives structured data from uniswap-data + olas
-       |     \-- enable_web_search: "off" (has all quant data already)
-       |     \-- optionally wrapped in eigencompute for verifiability
+       |     \-- cross-checks Venice's recommendation
+       |     \-- validates directional bias + confidence
        |
        | DECIDE
        |   Agent reasons holistically (replaces Phase 3 simple heuristic)
@@ -157,11 +164,12 @@ is the Uniswap Trading API — expanded from a single quote call to a
 multi-call data tool that extracts price, spread, liquidity depth,
 and approval status from the same API.
 
-**1. Uniswap Trading API — Expanded (free with API key, 4 calls/cycle)**
+**1. Uniswap Trading API + DeFiLlama (free, 4 API calls + analytics/cycle)**
 
 The old `uniswap-quote` tool made a single quote call. The new
-`uniswap-data` tool makes 4 calls per cycle, extracting structured
-financial signals that are far more useful than web-scraped prose:
+`uniswap-data` tool makes 4 Uniswap API calls per cycle plus DeFiLlama
+on-chain analytics, extracting structured financial signals that are
+far more useful than web-scraped prose:
 
 ```
   Call 1: Forward Quote (wstETH → USDC)
@@ -191,9 +199,19 @@ financial signals that are far more useful than web-scraped prose:
   walletAddress: vault hook address, token: wstETH, amount: max
   Returns: requestId, approval status, gasFee
   Signal: whether Permit2 approval is active for the vault
+
+  Call 5: DeFiLlama On-Chain Analytics (free, no API key)
+  GET https://api.llama.fi/protocol/lido
+  GET https://yields.llama.fi/chart/<pool-uuid>
+  Returns: TVL, TVL change (24h/7d), yield data, protocol flows
+  Signals:
+    - TVL trending down → capital flight, widen range defensively
+    - TVL spike → new deposits, tighter range may capture more fees
+    - Yield comparison → is our pool competitive vs alternatives?
+    - Protocol-level flows → Lido staking/unstaking trends
 ```
 
-**Why 4 calls is better than web search:**
+**Why structured data is better than web search for quant inputs:**
 
 Each call returns structured JSON with exact numbers. The agent feeds
 Venice precise data instead of hoping Venice finds the right web pages:
@@ -207,36 +225,104 @@ Venice precise data instead of hoping Venice finds the right web pages:
     Price impact at 10x: 0.12% — moderate depth
     Approval status: active (Permit2)
     Gas estimate: 0.0003 ETH
+
+  DeFiLlama Analytics:
+    Lido TVL: $14.2B (−1.3% 24h)
+    wstETH/USDC pool yield: 4.2% APY
+    Protocol flows: net −$180M outflow (7d)
 ```
 
 Venice gets exact numbers and can reason precisely about spread width,
-price impact, and implied liquidity depth. Compare this to Venice web
-search which would return prose like "wstETH is trading around $3,400
-on Binance" — no spread, no depth, no precision.
+price impact, implied liquidity depth, and macro protocol trends.
 
-**Every call generates a requestId** logged to the submission proof
-file. At 4 calls per cycle × 288 cycles per day = **1,152+ logged
-Uniswap API interactions** with real request IDs. This is an extremely
-strong Uniswap bounty submission.
+**Every Uniswap call generates a requestId** logged to the submission
+proof file. At 4 calls per cycle × 288 cycles per day = **1,152+
+logged Uniswap API interactions** with real request IDs. This is an
+extremely strong Uniswap bounty submission.
 
-**2. Olas Mech Marketplace (paid, USDC via Locus)**
+**2. Venice AI — Two-Call Sentiment + Analysis Pipeline (free)**
 
-10+ requests for price predictions, volatility estimates, directional
-sentiment, and cross-check analysis. Paid from Locus wallet. Results
-feed into Venice as supplementary qualitative data alongside the
-structured Uniswap numbers.
+Venice serves two distinct roles in each heartbeat cycle:
 
-**3. Venice AI (free with API key, `enable_web_search: "off"`)**
+**Call #1: Sentiment Gathering (`enable_web_search: "on"`)**
 
-Venice receives all structured data from uniswap-data and olas-analyze
-as input. With precise quantitative data already provided, Venice's
-`enable_web_search` is set to `"off"` for the primary inference call.
-Venice focuses purely on analysis and recommendation — not data
-gathering.
+```
+  venice-analyze --mode sentiment
+  Prompt: "Summarize current sentiment for wstETH/USDC:
+           social signals, governance news, whale movements,
+           market mood. Return as structured JSON with fields:
+           sentiment (bullish/bearish/neutral), confidence (0-1),
+           signals (array of key observations)."
+  Returns:
+    {
+      "sentiment": "moderately_bullish",
+      "confidence": 0.72,
+      "signals": [
+        "Lido V3 governance vote passing with 94% approval",
+        "Large wstETH accumulation on Aave over past 48h",
+        "ETH gas fees at monthly low — favorable for LP rebalancing"
+      ]
+    }
+```
 
-Optional: a separate lightweight Venice call with `enable_web_search:
-"on"` can fetch qualitative sentiment (DeFi news, Lido governance
-updates) as a supplementary signal. This is a stretch goal, not core.
+This call uses Venice's web search capability to gather qualitative
+signals that structured APIs cannot provide: social media sentiment,
+governance developments, whale behavior patterns, and market narrative.
+
+**Call #2: Analysis + Recommendation (`enable_web_search: "off"`)**
+
+```
+  venice-analyze --mode analyze
+  Input: pool state + uniswap data + DeFiLlama analytics + sentiment from Call #1
+  Returns:
+    {
+      "tickLower": -180, "tickUpper": 120,
+      "fee": 3500, "confidence": 0.82,
+      "reasoning": "Spread is tight, depth is good, sentiment is
+       bullish with governance tailwinds — shift range slightly above
+       current price. TVL outflow suggests caution, moderate fee."
+    }
+```
+
+This call receives ALL structured data and the sentiment signal. With
+every input already provided, web search is OFF — Venice focuses purely
+on analysis and recommendation, not data gathering.
+
+**Both calls run inside EigenCompute TEE**, so the attestation covers
+the full pipeline: sentiment gathering → analysis → recommendation.
+Non-deterministic web search results don't affect TEE consensus because
+EigenCompute's mainnet alpha uses a single TEE instance (attestation
+proves code integrity, not output reproducibility).
+
+**3. Olas Mech Marketplace — Cross-Check Layer (paid, USDC via Locus)**
+
+Olas Mech's role is to **validate Venice's recommendation**, not to
+provide upstream data. After Venice produces a recommendation, the
+agent sends it to Olas for independent cross-checking:
+
+```
+  olas-analyze --recommendation '<venice output JSON>'
+  Olas validates:
+    - Does Venice's directional bias align with Olas's own prediction?
+    - Is Venice's confidence justified given market conditions?
+    - Are the tick range and fee within reasonable bounds?
+  Returns:
+    {
+      "agrees": true,
+      "olasPrediction": { "direction": "up", "probability": 0.62 },
+      "confidence": 0.68,
+      "flags": [],
+      "txHashes": ["0x...", "0x...", ...]
+    }
+```
+
+If Olas disagrees with Venice (e.g., Venice says bullish but Olas
+predicts down), the agent can reduce confidence, widen the tick range
+defensively, or skip the rebalance entirely. This provides a safety
+net against Venice hallucinations or stale web search data.
+
+10+ Mech requests per cycle, paid from Locus wallet. All tx hashes
+logged for submission proof.
 
 **Data pipeline summary:**
 
@@ -245,30 +331,34 @@ updates) as a supplementary signal. This is a stretch goal, not core.
        |
        | Pool state: tick, liquidity, fee, volume, idle balances
        v
-  uniswap-data (free, 4 API calls)
+  uniswap-data (free, 4 Uniswap API calls + DeFiLlama)
        |
-       | Price: $3,412.50
-       | Spread: 0.08%
-       | Price impact at 10x: 0.12%
-       | Approval: active
+       | Price: $3,412.50, Spread: 0.08%
+       | Price impact at 10x: 0.12%, Approval: active
+       | Lido TVL: $14.2B (−1.3%), Pool yield: 4.2% APY
        | 4 requestIds logged
        v
-  olas-analyze (paid via Locus, 10+ Mech requests)
+  venice-sentiment (free, Venice web search ON)
        |
-       | Predictions: 62% up, 38% down
-       | Volatility estimate: 12% annualized
-       | Sentiment: moderately bullish
-       | 10+ tx hashes logged
+       | Sentiment: moderately bullish (0.72 confidence)
+       | Signals: governance vote, whale accumulation, low gas
        v
-  venice-analyze (free, structured input, web search OFF)
+  venice-analyze (free, Venice web search OFF)
        |
+       | Input: pool state + uniswap data + DeFiLlama + sentiment
        | Recommendation: tick [-180, 120], fee 3500, confidence 0.82
-       | Reasoning: "Spread is tight, depth is good, Olas sees upward
-       |  bias — shift range slightly above current price, moderate fee"
+       | Reasoning: "Spread is tight, depth good, bullish sentiment
+       |  with governance tailwinds, TVL outflow suggests caution"
        v
-  eigencompute (optional TEE wrapper)
+  eigencompute (TEE wrapper — covers both Venice calls)
        |
        | Same recommendation + attestation hash proving verifiable compute
+       v
+  olas-analyze (paid via Locus, cross-checks Venice recommendation)
+       |
+       | Agrees: yes, Olas prediction: 62% up
+       | Flags: none
+       | 10+ tx hashes logged
        v
   Agent DECIDES → execute-rebalance or skip
 ```
@@ -282,82 +372,97 @@ Docker image that runs inside a Trusted Execution Environment (TEE).
 The TEE produces a cryptographic attestation proving that the code
 ran unmodified inside the enclave.
 
-**For CuratedLP, EigenCompute wraps the Venice inference step.**
+**For CuratedLP, EigenCompute wraps the entire Venice pipeline
+(both sentiment and analysis calls).**
 
-Instead of the agent calling Venice directly, it calls the Venice
-inference inside an EigenCompute TEE. The result: every rebalance
+Instead of the agent calling Venice directly, both Venice calls
+run inside an EigenCompute TEE. The result: every rebalance
 recommendation is verifiably computed — you can prove the AI actually
-ran the analysis it claims it did, with no tampering.
+gathered sentiment, analyzed the data, and produced the recommendation
+with no tampering at any stage.
 
 ```
   WITHOUT EigenCompute:
-  Agent → Venice API → recommendation (trust the agent's claim)
+  Agent → Venice (sentiment) → Venice (analyze) → recommendation
+  (trust the agent's claim at every step)
 
   WITH EigenCompute:
-  Agent → EigenCompute TEE → Venice API → recommendation + attestation
-  (cryptographic proof the inference happened correctly)
+  Agent → EigenCompute TEE → Venice (sentiment) → Venice (analyze)
+       → recommendation + single attestation hash
+  (cryptographic proof the full pipeline ran correctly)
 ```
+
+Running both calls inside the TEE is important: if only the analysis
+call were verified, an attacker could fake bearish sentiment input to
+manipulate Venice into a bad recommendation. Wrapping both calls means
+the attestation covers: sentiment gathered → data assembled → analysis
+produced → recommendation output. No tampering possible at any stage.
+
+Non-deterministic web search results from the sentiment call do not
+affect TEE consensus. EigenCompute's mainnet alpha uses a single TEE
+instance — the attestation proves the code (Docker digest) ran
+unmodified inside Intel TDX, not that outputs are reproducible. This
+is inherent to any live data source and is perfectly acceptable.
 
 **Why this matters for the project narrative:**
 
 LPs currently trust the curator agent to honestly relay Venice's
 recommendations. With EigenCompute, they don't need to trust —
 they can verify. The TEE attestation proves:
-- The Venice API was actually called (not a hardcoded response)
-- The pool state data was actually passed (not manipulated)
+- Venice's web search was actually executed for sentiment (not fabricated)
+- The pool state and market data were actually passed (not manipulated)
 - The recommendation was not altered after Venice returned it
+- The same Docker image (by digest) produced the result every time
 
 **EigenCloud bounty requirements (all achievable):**
 
 | Requirement | How We Satisfy It |
 |---|---|
-| Working Docker image on EigenCompute | Dockerfile that runs venice-analyze inside TEE |
+| Working Docker image on EigenCompute | Dockerfile that runs both Venice calls (sentiment + analysis) inside TEE |
 | GitHub repo with README + setup instructions | Already needed for Uniswap bounty |
 | Live demo or recorded demo (2-5 mins) | Part of our hackathon demo |
-| Architecture diagram showing EigenCompute fit | Agent → EigenCompute → Venice → on-chain action |
+| Architecture diagram showing EigenCompute fit | Agent → EigenCompute TEE → Venice (sentiment) → Venice (analyze) → on-chain action |
 | Supported stack: Node.js inside TEE | Our tools are already Node.js/TypeScript |
 
 ---
 
 ## The eigencompute.ts Tool
 
-**Purpose:** Run Venice AI inference inside an EigenCompute TEE,
-producing a verifiable attestation alongside the recommendation.
+**Purpose:** Run the full Venice AI pipeline (sentiment + analysis)
+inside an EigenCompute TEE, producing a verifiable attestation
+alongside the recommendation.
 
-**Input:** Same as venice-analyze: pool state JSON (required),
-Olas results JSON (optional), Uniswap price (optional).
+**Input:** Pool state JSON (required), Uniswap data JSON (required),
+DeFiLlama analytics JSON (required).
 
 **Output fields:** Everything from venice-analyze PLUS:
-attestationHash, teeProvider, computeJobId, verifiable (boolean).
+sentiment (from Call #1), attestationHash, teeProvider, computeJobId,
+verifiable (boolean).
 
 **Implementation approach:**
 
 Option A — Full TEE deployment (ideal):
 
 ```
-  1. Package venice-analyze.ts logic into a Docker image
+  1. Package venice-analyze.ts logic (both sentiment + analysis modes)
+     into a single Docker image
   2. Deploy to EigenCompute via their CLI/API
   3. eigencompute.ts triggers the compute job with input data
-  4. EigenCompute runs the Venice call inside TEE
-  5. Returns recommendation + attestation hash
-  6. Agent verifies attestation, uses recommendation
+  4. EigenCompute TEE runs:
+     a. Venice Call #1 (web search ON) → sentiment JSON
+     b. Venice Call #2 (web search OFF, all data + sentiment) → recommendation
+  5. Returns recommendation + sentiment + single attestation hash
+  6. Agent passes recommendation to Olas for cross-checking
 ```
 
-The Dockerfile:
-```dockerfile
-FROM node:20-slim
-WORKDIR /app
-COPY package.json tsconfig.json ./
-COPY src/tools/venice-analyze.ts ./src/tools/
-COPY src/lib/ ./src/lib/
-RUN npm install && npm run build
-ENTRYPOINT ["node", "dist/tools/venice-analyze.js"]
-```
+The Dockerfile is defined in Step 6 below. See that section for the
+full `Dockerfile` with EigenCompute TEE requirements (`--platform=linux/amd64`,
+`USER root`, `EXPOSE 3000`, `npm ci`, etc.).
 
 Option B — Attestation wrapper (fallback if TEE setup is complex):
 
 ```
-  1. eigencompute.ts calls venice-analyze locally
+  1. eigencompute.ts calls venice-analyze locally (both modes)
   2. Hashes the input + output together
   3. Submits the hash to EigenCompute for TEE-signed attestation
   4. Returns recommendation + attestation
@@ -389,14 +494,16 @@ includes verifiable=true and attestation fields.
 
 | Aspect | Phase 3 | Phase 4 |
 |---|---|---|
-| Decision intelligence | Simple heuristic (idle balance proxy) | Venice AI with structured Uniswap data + Olas predictions |
-| Data sources | On-chain only (pool-reader) | On-chain + Uniswap API × 4 (price/spread/depth/approval) + Olas |
-| Market data quality | None | Exact prices, bid/ask spread, price impact — structured JSON |
+| Decision intelligence | Simple heuristic (idle balance proxy) | Venice AI two-call pipeline (sentiment + analysis) with structured data + Olas cross-checks |
+| Data sources | On-chain only (pool-reader) | On-chain + Uniswap API × 4 + DeFiLlama analytics + Venice web search sentiment + Olas cross-check |
+| Market data quality | None | Exact prices, bid/ask spread, price impact, TVL/yield analytics, social sentiment — structured JSON |
+| Sentiment | None | Venice web search (Call #1) gathers social signals, governance news, whale movements |
+| On-chain analytics | None | DeFiLlama (TVL, yields, protocol flows) integrated into uniswap-data tool |
 | Spending | None | Locus wallet pays for Olas Mech (USDC) |
-| Verifiability | Trust the agent | EigenCompute TEE attestation on Venice calls |
+| Verifiability | Trust the agent | EigenCompute TEE attestation on both Venice calls (sentiment + analysis) |
 | SKILL.md | Simple guidelines | Full autonomous framework with budget-adaptive strategy |
 | Tools | 3 (pool-reader, execute-rebalance, claim-fees) | 8 (add check-budget, uniswap-data, olas-analyze, venice-analyze, eigencompute) |
-| Uniswap API calls/cycle | 0 | 4 (forward quote, reverse quote, large quote, check approval) |
+| Uniswap API calls/cycle | 0 | 4 (forward quote, reverse quote, large quote, check approval) + DeFiLlama |
 | Execution path | Unchanged | Unchanged — same delegation redemption |
 
 The Phase 3 tools (pool-reader, execute-rebalance, claim-fees) are NOT
@@ -413,23 +520,34 @@ modified. Phase 4 only adds new tools alongside them.
        |
        | (all tools depend on these)
        |
-  +----+----+----+----+
-  |    |    |    |    |
-  v    v    v    v    v
- check uniswap olas venice eigen
- budget quote  analyze analyze compute
-                              |
-                              | (eigencompute wraps
-                              |  venice-analyze)
-                              +--- depends on venice-analyze
+  +----+----+
+  |         |
+  v         v
+ check    uniswap-data              venice-analyze
+ budget   (Uniswap API ×4           (two-call pipeline:
+          + DeFiLlama)               sentiment + analysis)
+                                          |
+                                          | (olas needs Venice output shape)
+                                          v
+                                     olas-analyze
+                                     (cross-checks Venice)
+                                          |
+                                          | (eigencompute wraps venice-analyze)
+                                          v
+                                     eigencompute
+                                          |
+                                          v
+                                     Dockerfile + deploy
+
+  Steps 2, 3, and 4 can all be built in parallel.
+  Step 5 depends on Step 4 (needs Venice output shape to cross-check).
+  Step 6 depends on Step 4 (wraps Venice pipeline in TEE).
+  Steps 5 and 6 can be built in parallel (both depend on 4, not each other).
 
   After all tools pass isolation tests:
        |
        v
   Update SKILL.md with full Phase 4 decision framework
-       |
-       v
-  Build Dockerfile for EigenCompute
        |
        v
   Update .env.example with new env vars
@@ -444,17 +562,40 @@ modified. Phase 4 only adds new tools alongside them.
 |---|---|---|---|
 | 1 | Foundation libs (config, types, logger, cache) | Nothing | — |
 | 2 | check-budget (Locus client) | Step 1 | Locus ($3,000) |
-| 3 | uniswap-data (Trading API × 4 calls) | Step 1 | Uniswap ($5,000) |
-| 4 | olas-analyze (Mech requests) | Step 1 | Olas ($1,000) |
-| 5 | venice-analyze (Venice AI) | Step 1 | Venice ($11,500) |
-| 6 | eigencompute (TEE wrapper) | Step 5 | EigenCloud ($5,000) |
+| 3 | uniswap-data (Trading API × 4 calls + DeFiLlama analytics) | Step 1 | Uniswap ($5,000) |
+| 4 | venice-analyze (two-call pipeline: sentiment + analysis) | Step 1 | Venice ($11,500) |
+| 5 | olas-analyze (Mech cross-check of Venice recommendation) | Steps 1, 4 | Olas ($1,000) |
+| 6 | eigencompute (TEE wrapper for both Venice calls) | Steps 1, 4 | EigenCloud ($5,000) |
 | 7 | Dockerfile + EigenCompute deploy | Step 6 | EigenCloud ($5,000) |
 | 8 | Update SKILL.md | Steps 2-6 | — |
 | 9 | End-to-end test | All | All |
 
-Steps 2, 3, and 4 can be built in parallel. Step 5 is independent.
-Step 6 wraps Step 5, so it must come after. Step 7 is the Docker
+Steps 2, 3, and 4 can all be built in parallel — they have no
+dependencies on each other. Steps 5 and 6 both depend on Step 4
+(Venice output shape) but NOT on each other, so they can also be
+built in parallel once Step 4 is done. Step 7 is the Docker
 packaging for the EigenCloud bounty.
+
+**Dependency graph:**
+
+```
+  Step 1 (foundation)
+    |
+    +--→ Step 2 (check-budget)  ──────────────────────┐
+    +--→ Step 3 (uniswap-data + DeFiLlama)  ─────────┤
+    +--→ Step 4 (venice-analyze)                      |
+              |                                       |
+              +--→ Step 5 (olas-analyze)  ────────────┤
+              +--→ Step 6 (eigencompute)              |
+                       |                              |
+                       +--→ Step 7 (Dockerfile) ─────┤
+                                                      |
+                                                      v
+                                              Step 8 (SKILL.md)
+                                                      |
+                                                      v
+                                              Step 9 (e2e test)
+```
 
 ---
 
@@ -466,21 +607,28 @@ Both people build Step 1 (foundation libs) together. Agree on the JSON
 output contracts in types.ts before diverging — each tool's output
 shape must match what the SKILL.md documents.
 
-### Person A — OBSERVE + Paid ANALYZE (Steps 2, 4)
+Key interfaces to agree on:
+- `UniswapDataResult` (Person B produces, consumes in Venice Call #2)
+- `SentimentResult` (Person B produces in Venice Call #1, consumes in Call #2)
+- `RebalanceRecommendation` (Person B produces from Venice Call #2, Person A consumes in Olas cross-check)
+- `OlasCrossCheckResult` (Person A produces from Olas)
+- `EigenComputeResult` (Person B produces, extends RebalanceRecommendation)
+
+### Person A — OBSERVE + Paid ANALYZE (Steps 2, 5)
 
 | Tool | Notes |
 |---|---|
-| check-budget | OBSERVE phase. Small, quick. Unblocks budget-adaptive reasoning. |
-| olas-analyze | ANALYZE phase. Paid via Locus. Independent of Person B. |
+| check-budget | OBSERVE phase. Small, quick. Unblocks budget-adaptive reasoning. Covers Locus wallet integration. |
+| olas-analyze | CROSS-CHECK phase. Validates Venice's recommendation. Paid via Locus. Covers the entire Locus wallet + Olas data layer integration. Tests with hardcoded Venice recommendation JSON until Person B's venice-analyze is ready. |
 
-### Person B — Free ANALYZE + Intelligence + Verifiability (Steps 3, 5, 6, 7)
+### Person B — Free ANALYZE + Intelligence + Verifiability (Steps 3, 4, 6, 7)
 
 | Tool | Notes |
 |---|---|
-| uniswap-data | ANALYZE phase. Free, 4 API calls. Independent of Person A. |
-| venice-analyze | ANALYZE phase. Start with hardcoded test data for Olas input. |
-| eigencompute | Wraps venice-analyze in TEE. Must come after venice-analyze. |
-| Dockerfile | EigenCloud bounty deliverable. Packages venice-analyze. |
+| uniswap-data | ANALYZE phase. Free, 4 Uniswap API calls + DeFiLlama analytics. Independent of Person A. |
+| venice-analyze | ANALYZE phase. Two-call pipeline: Call #1 sentiment (web search ON), Call #2 analysis (web search OFF). No cross-person dependency — consumes uniswap-data (own tool) + own sentiment output. |
+| eigencompute | Wraps both Venice calls in TEE. Build after venice-analyze. |
+| Dockerfile | EigenCloud bounty deliverable. Packages venice-analyze (both modes). Comes after eigencompute. |
 
 ### Why there's zero cross-person blocking
 
@@ -489,12 +637,15 @@ shape must match what the SKILL.md documents.
   +--------------------------+      +--------------------------+
   |                          |      |                          |
   | check-budget             |      | uniswap-data             |
-  | olas-analyze             |      | venice-analyze            |
-  | (parallel, independent)  |      | (start with test data)    |
-  |                          |      |                          |
-  | 2 tools                  |      | Then:                    |
-  |                          |      | eigencompute             |
-  |                          |      | Dockerfile               |
+  |   (Locus wallet)         |      |   (Uniswap API ×4       |
+  | olas-analyze             |      |    + DeFiLlama)          |
+  |   (cross-checks Venice,  |      | venice-analyze            |
+  |    paid via Locus)        |      |   Call #1: sentiment      |
+  |                          |      |   Call #2: analysis       |
+  | 2 tools                  |      |                          |
+  | (Locus + Olas layer)     |      | Then:                    |
+  |                          |      |   eigencompute           |
+  |                          |      |   Dockerfile + deploy    |
   |                          |      |                          |
   |                          |      | 4 deliverables           |
   +--------------------------+      +--------------------------+
@@ -507,9 +658,15 @@ shape must match what the SKILL.md documents.
 ```
 
 Person A never waits on Person B. Person B never waits on Person A.
-Person B tests venice-analyze with a fake Olas JSON until Person A's
-olas-analyze is ready. Person A tests olas-analyze without caring
-about Venice. Both work fine in isolation.
+Person A tests olas-analyze with hardcoded Venice recommendation JSON
+until Person B's venice-analyze is ready. Person B has no cross-person
+dependency — venice-analyze consumes uniswap-data (Person B's own tool)
+and its own sentiment output. Both work fine in isolation.
+
+Person A owns the entire Locus wallet + Olas integration — budget
+checking and paid cross-check calls. Person B owns the entire data
+pipeline (Uniswap + DeFiLlama), intelligence layer (Venice two-call),
+and verifiability layer (EigenCompute).
 
 ### How Each Person Tests Their Tools
 
@@ -518,22 +675,24 @@ about Venice. Both work fine in isolation.
 | Tool | Standalone test | OpenClaw test |
 |---|---|---|
 | check-budget | Run `bun run src/tools/check-budget.ts`. Confirm balance and canSpend fields returned. | Add to SKILL.md OBSERVE phase. Run heartbeat. Verify agent reads budget and references it in reasoning ("Budget is $4.20, can afford Olas"). |
-| olas-analyze | Run `bun run src/tools/olas-analyze.ts --pool '<json from pool-reader>'`. Confirm 10+ results, tx hashes in payment-log.json. | Add to SKILL.md ANALYZE phase. Run heartbeat. Verify agent invokes olas after checking budget. If budget is low, verify agent skips Olas and explains why. |
+| olas-analyze | Run `bun run src/tools/olas-analyze.ts --recommendation '<hardcoded venice output>'`. Confirm agrees/disagrees, own prediction, flags, 10+ tx hashes in payment-log.json. | Add to SKILL.md CROSS-CHECK phase. Run heartbeat. Verify agent sends Venice recommendation to Olas for cross-check. If Olas disagrees, verify agent adjusts (widens range, skips rebalance). If budget is low, verify agent skips Olas and explains why. |
 
 Person A validates budget-adaptive behavior: run a heartbeat with full
-budget (agent fetches Olas), then drain the Locus wallet and run
-another heartbeat (agent skips Olas, uses cache). Two different
-decisions from the same agent proves autonomous reasoning.
+budget (agent cross-checks via Olas), then drain the Locus wallet and
+run another heartbeat (agent skips Olas, proceeds with Venice
+recommendation unverified). Two different decisions from the same agent
+proves autonomous reasoning.
 
 **Person B testing (uniswap-data, venice-analyze, eigencompute):**
 
 | Tool | Standalone test | OpenClaw test |
 |---|---|---|
-| uniswap-data | Run `bun run src/tools/uniswap-data.ts`. Confirm forwardPrice, spread, priceImpact, 4 requestIds. | Add to SKILL.md ANALYZE phase. Run heartbeat. Verify agent references specific numbers: "Spread is 8 bps, depth is moderate." |
-| venice-analyze | Run `bun run src/tools/venice-analyze.ts --pool '<json>' --uniswap '<json>'`. Test with and without --olas arg to verify partial data handling. | Add to SKILL.md ANALYZE phase. Run heartbeat. Verify agent gathers uniswap-data, passes to venice-analyze, reads confidence, decides to act or skip. |
-| eigencompute | Build Docker image. Run `docker run curatedlp/venice-analyzer --pool '<json>'`. Deploy to EigenCompute, verify attestation hash returned. | Add to SKILL.md as alternative to venice-analyze. Run heartbeat. Verify agent uses eigencompute, logs attestation hash in REFLECT. |
+| uniswap-data | Run `bun run src/tools/uniswap-data.ts`. Confirm forwardPrice, spread, priceImpact, 4 requestIds, and DeFiLlama TVL/yield data. | Add to SKILL.md ANALYZE phase. Run heartbeat. Verify agent references specific numbers: "Spread is 8 bps, depth is moderate, Lido TVL down 1.3%." |
+| venice-analyze (sentiment) | Run `bun run src/tools/venice-analyze.ts --mode sentiment`. Confirm sentiment, confidence, signals array returned. Web search must be ON. | Add to SKILL.md ANALYZE phase. Run heartbeat. Verify agent gathers sentiment before analysis call. |
+| venice-analyze (analysis) | Run `bun run src/tools/venice-analyze.ts --mode analyze --pool '<json>' --uniswap '<json>' --sentiment '<json>'`. Confirm tick/fee/confidence recommendation. Web search must be OFF. | Run heartbeat. Verify agent passes sentiment + uniswap data + DeFiLlama to Venice. Verify Venice references sentiment in reasoning. |
+| eigencompute | Build Docker image. Run `docker run --platform linux/amd64 curatedlp/venice-analyzer --pool '<json>' --uniswap '<json>'`. Deploy to EigenCompute, verify attestation hash covers both Venice calls. | Add to SKILL.md as wrapper for venice-analyze. Run heartbeat. Verify agent uses eigencompute, logs attestation hash in REFLECT. |
 
-Person B validates the intelligence pipeline: run a heartbeat where
+Person B validates the full intelligence pipeline: run a heartbeat where
 Venice recommends a meaningful change (agent rebalances), then run
 another where Venice has low confidence (agent skips). Verify Venice
 references the exact spread and depth numbers from uniswap-data in
@@ -541,25 +700,30 @@ its reasoning, not generic language.
 
 ### What neither person can test alone
 
-The full pipeline where olas-analyze output (Person A) feeds into
-venice-analyze input (Person B). This only works when both merge:
+The full pipeline where Venice output (Person B) feeds into
+olas-analyze (Person A) for cross-checking. This only works when
+both merge:
 
 ```
   pool-reader (existing)
        +
-  check-budget (Person A)
+  check-budget (Person A)         — Locus wallet balance
        +
-  uniswap-data (Person B)         — structured price/spread/depth
+  uniswap-data (Person B)         — price/spread/depth + DeFiLlama analytics
+       |
+       +--- feeds into --->
+       |
+  venice-sentiment (Person B)     — web search ON, social/governance signals
        +
-  olas-analyze (Person A)          — predictions/sentiment
+  venice-analyze (Person B)       — all data + sentiment → recommendation
        |
-       +--- all feed into --->
+  eigencompute (Person B)         — TEE attestation on both Venice calls
        |
-  venice-analyze (Person B)        — recommendation
+       +--- feeds into --->
        |
-  eigencompute (Person B)          — attestation
+  olas-analyze (Person A)         — cross-checks Venice recommendation
        |
-  execute-rebalance (existing)     — on-chain action
+  execute-rebalance (existing)    — on-chain action
 ```
 
 Until that merge point, each person tests their tools with hardcoded
@@ -591,6 +755,7 @@ add `EigenComputeResult` interface:
 
 ```typescript
 export interface EigenComputeResult extends RebalanceRecommendation {
+  sentiment: SentimentResult;   // from Venice Call #1 (web search ON)
   attestationHash: string;
   teeProvider: string;
   computeJobId: string;
@@ -613,10 +778,9 @@ budget-adaptive strategy simplifies:
 
 ```
   Budget remaining        Data strategy
-  > $1.00 (comfortable)   FULL: uniswap + olas + venice
-  $0.10 - $1.00           PARTIAL: uniswap + venice (skip Olas, use cache)
-  < $0.10 (near broke)    MINIMAL: uniswap + venice only (free sources)
-  $0.00                   CACHE-ONLY: uniswap + cache + venice with partial data
+  > $1.00 (comfortable)   FULL: uniswap + DeFiLlama + venice (sentiment + analysis) + olas cross-check
+  $0.01 - $1.00 (low)     FREE-ONLY: uniswap + DeFiLlama + venice (sentiment + analysis), skip Olas
+  $0.00 (empty)            FREE-ONLY + CACHE: same as above, use cached Olas cross-check if available
 ```
 
 Venice API calls and Uniswap API calls are free (covered by API keys).
@@ -625,21 +789,25 @@ less funding — $5-10 USDC covers the entire hackathon instead of $10+.
 
 ---
 
-### Step 3: uniswap-data Tool (expanded from uniswap-quote)
+### Step 3: uniswap-data Tool (expanded from uniswap-quote + DeFiLlama)
 
 **Purpose:** Extract structured market signals from the Uniswap Trading
-API via multiple quote calls. This is the agent's primary source of
-real-time, precise financial data.
+API via multiple quote calls, and on-chain analytics from DeFiLlama.
+This is the agent's primary source of real-time, precise financial and
+macro protocol data.
 
-**Input:** None (reads UNISWAP_API_KEY from env vars).
+**Input:** None (reads UNISWAP_API_KEY from env vars). DeFiLlama
+requires no API key.
 
 **Output fields:** forwardPrice, reversePrice, spread, spreadBps,
 priceImpact10x, priceImpactBps, gasEstimate, approvalActive,
-requestIds (array of 4), timestamp.
+requestIds (array of 4), defiLlama (object with TVL, tvlChange24h,
+tvlChange7d, poolYield, protocolFlows), timestamp.
 
 **Implementation:**
 
-Four parallel API calls using Promise.allSettled:
+Five parallel API calls using Promise.allSettled — 4 Uniswap + 1
+DeFiLlama batch:
 
 ```typescript
 // Call 1: Forward quote — wstETH → USDC (current price)
@@ -682,9 +850,30 @@ const approval = await postCheckApproval({
   amount: MaxUint256.toString(),
   chainId: CHAIN_ID,
 });
+
+// Call 5: DeFiLlama on-chain analytics (free, no API key)
+const [lidoProtocol, poolYields] = await Promise.allSettled([
+  fetch('https://api.llama.fi/protocol/lido').then(r => r.json()),
+  fetch('https://yields.llama.fi/chart/<wsteth-usdc-pool-uuid>').then(r => r.json()),
+]);
 ```
 
-**Derived signals (computed from raw quotes):**
+**DeFiLlama derived signals:**
+
+```typescript
+// From protocol endpoint
+const currentTvl = lidoProtocol.tvl[lidoProtocol.tvl.length - 1].totalLiquidityUSD;
+const prevTvl24h = lidoProtocol.tvl[lidoProtocol.tvl.length - 2].totalLiquidityUSD;
+const prevTvl7d = lidoProtocol.tvl[lidoProtocol.tvl.length - 8].totalLiquidityUSD;
+const tvlChange24h = ((currentTvl - prevTvl24h) / prevTvl24h) * 100;
+const tvlChange7d = ((currentTvl - prevTvl7d) / prevTvl7d) * 100;
+
+// From yields endpoint
+const latestYield = poolYields.data[poolYields.data.length - 1];
+const poolYield = latestYield.apy;
+```
+
+**Uniswap derived signals (computed from raw quotes):**
 
 ```typescript
 const forwardPrice = parseFloat(forward.quote) / 1e6;  // USDC output per wstETH
@@ -698,71 +887,121 @@ const priceImpactBps = priceImpact * 10000;
 
 **What each signal tells Venice:**
 
-| Signal | Meaning | Agent Action |
-|---|---|---|
-| `spread` | Bid/ask width, proxy for short-term volatility | Wide spread → widen tick range, raise fee |
-| `spreadBps` | Spread in basis points, comparable across price levels | >50 bps = volatile, <10 bps = calm |
-| `priceImpact10x` | How much price moves at 10x trade size | High impact → shallow depth → widen range |
-| `priceImpactBps` | Impact in bps, directly informs fee setting | Impact > fee → fee is too low |
-| `gasEstimate` | Current gas cost for a swap | Informs whether rebalance tx is worth it |
-| `approvalActive` | Whether Permit2 approval is live | False → alert, may block execution |
+| Signal | Source | Meaning | Agent Action |
+|---|---|---|---|
+| `spread` | Uniswap | Bid/ask width, proxy for short-term volatility | Wide spread → widen tick range, raise fee |
+| `spreadBps` | Uniswap | Spread in basis points, comparable across price levels | >50 bps = volatile, <10 bps = calm |
+| `priceImpact10x` | Uniswap | How much price moves at 10x trade size | High impact → shallow depth → widen range |
+| `priceImpactBps` | Uniswap | Impact in bps, directly informs fee setting | Impact > fee → fee is too low |
+| `gasEstimate` | Uniswap | Current gas cost for a swap | Informs whether rebalance tx is worth it |
+| `approvalActive` | Uniswap | Whether Permit2 approval is live | False → alert, may block execution |
+| `tvl` | DeFiLlama | Lido protocol TVL | Macro health of the underlying protocol |
+| `tvlChange24h` | DeFiLlama | TVL trend (24h) | Negative → capital flight, widen range defensively |
+| `tvlChange7d` | DeFiLlama | TVL trend (7d) | Sustained decline → reduce confidence |
+| `poolYield` | DeFiLlama | Current pool APY | Competitive context — is our pool attractive? |
 
 **Rate limiting:** Uniswap Trading API has rate limits. All 4 calls
 use the same API key. If any call returns 429, back off exponentially.
-Partial results are fine — forward quote alone is sufficient minimum.
+DeFiLlama has no rate limits for reasonable usage. Partial results are
+fine — forward quote alone is sufficient minimum.
 
 **Failure mode:** Returns whatever succeeded. If forward quote fails
 (the most critical), returns null. Agent proceeds with pool-reader
-data only and tells Venice "Uniswap data unavailable."
+data only and tells Venice "Uniswap data unavailable." DeFiLlama
+failure is non-critical — agent proceeds without macro data.
 
 **SKILL.md update:** Replace `uniswap-quote` with `uniswap-data` in
-Available Tools. Document all output fields and what they mean. In the
-ANALYZE phase, uniswap-data is always invoked first (free, highest
-value per call). Venice receives the full output as structured input.
+Available Tools. Document all output fields including DeFiLlama
+analytics and what they mean. In the ANALYZE phase, uniswap-data is
+always invoked first (free, highest value per call). Venice receives
+the full output as structured input.
 
 **Verification:**
 
 Standalone: Run `bun run src/tools/uniswap-data.ts` with a real API
 key. Confirm JSON output with all fields populated: forwardPrice,
 reversePrice, spread, spreadBps, priceImpact10x, priceImpactBps,
-gasEstimate, approvalActive, and 4 requestIds. Log all requestIds
-to payment-log.json (these are Uniswap bounty proof). Verify that
+gasEstimate, approvalActive, 4 requestIds, and defiLlama object with
+tvl, tvlChange24h, tvlChange7d, poolYield. Log all requestIds to
+payment-log.json (these are Uniswap bounty proof). Verify that
 spread and priceImpact values are sensible (spread < 1% for a liquid
-pair, price impact < 5%).
+pair, price impact < 5%). Verify DeFiLlama TVL is a reasonable number
+(Lido TVL should be in the billions).
 
 OpenClaw: Run one heartbeat. Verify the agent invokes uniswap-data
-and includes ALL derived signals in the data it passes to Venice.
-Verify the agent references specific numbers in its reasoning:
-"Spread is 0.08% (healthy), price impact at 10x is 0.12% (moderate
-depth), conditions favor a tighter range." Verify 4 requestIds
-logged per cycle.
+and includes ALL derived signals (Uniswap + DeFiLlama) in the data it
+passes to Venice. Verify the agent references specific numbers in its
+reasoning: "Spread is 0.08% (healthy), price impact at 10x is 0.12%
+(moderate depth), Lido TVL down 1.3% — conditions favor a slightly
+wider range." Verify 4 requestIds logged per cycle.
 
 ---
 
-### Step 4: olas-analyze Tool
+### Step 4: venice-analyze Tool (Two-Call Pipeline)
 
-**Unchanged from the original plan.** Shells out to mechx CLI for 10+
-parallel Mech requests. 120-second timeout per request. Payment via
-Locus wallet (USDC on Base). Returns predictions, volatility estimates,
-sentiment, tx hashes.
+**Significantly updated — now runs a two-call pipeline: sentiment
+gathering (web search ON) followed by analysis (web search OFF).**
 
-The 10 required requests remain the same (predictions, price oracle,
-GPT-4o analysis for tick ranges, fees, volatility, sentiment).
+Venice serves two distinct roles in each heartbeat cycle. The sentiment
+call provides the directional/qualitative input that structured APIs
+cannot. The analysis call uses all data (structured + sentiment) to
+produce the recommendation. Olas then cross-checks the output.
+
+**Modes:** The tool accepts a `--mode` flag: `sentiment` or `analyze`.
 
 ---
 
-### Step 5: venice-analyze Tool
+**Call #1: Sentiment (`--mode sentiment`, `enable_web_search: "on"`)**
 
-**Updated from original — now receives structured Uniswap data instead
-of relying on web search for market data.**
+**Input:** None (Venice searches the web autonomously).
 
-Venice's role changes from "data gatherer + analyzer" to pure
-"analyzer + recommender." It receives precise structured data from
-uniswap-data and olas-analyze, and focuses on reasoning.
+**Output fields:** sentiment (bullish/bearish/neutral), confidence
+(0 to 1), signals (array of key observations), timestamp.
 
-**Input:** Pool state JSON (required), Uniswap data JSON (optional),
-Olas results JSON (optional). Any input can be omitted if that data
-source was unavailable. Venice works with whatever is provided.
+**System prompt:**
+
+```
+You are a DeFi sentiment analyst. Search for current information about
+wstETH, Lido, and the ETH ecosystem. Summarize:
+
+1. Social media sentiment (Twitter/X, Reddit, CT)
+2. Governance news (Lido proposals, ETH protocol changes)
+3. Whale movements (large wstETH transfers, Aave/Compound deposits)
+4. Market mood (risk-on vs risk-off, macro events affecting crypto)
+
+Respond using the report_sentiment function with fields:
+- sentiment: "bullish" | "bearish" | "neutral"
+- confidence: 0 to 1
+- signals: array of 3-5 key observations with source context
+```
+
+Venice-specific parameters:
+- `include_venice_system_prompt: false`
+- **`enable_web_search: "on"`** (this is the whole point of Call #1)
+- `strip_thinking_response: false`
+
+**Example output:**
+
+```json
+{
+  "sentiment": "moderately_bullish",
+  "confidence": 0.72,
+  "signals": [
+    "Lido V3 governance vote passing with 94% approval — bullish for wstETH utility",
+    "Large wstETH accumulation on Aave over past 48h — whales positioning long",
+    "ETH gas fees at monthly low — favorable for LP rebalancing costs"
+  ]
+}
+```
+
+---
+
+**Call #2: Analysis (`--mode analyze`, `enable_web_search: "off"`)**
+
+**Input:** Pool state JSON (required), Uniswap data JSON with DeFiLlama
+(required), Sentiment JSON from Call #1 (required). Any non-pool input
+can be omitted if that data source was unavailable. Venice works with
+whatever is provided.
 
 **Output fields:** newTickLower, newTickUpper, newFee, confidence
 (0 to 1), reasoning (text), dataSources (list), missingData (list),
@@ -773,29 +1012,36 @@ prompt defines the agent's role and output format. Function calling
 forces structured output. Response validated (ticks divisible by 60,
 fee in range, confidence 0-1). Fallback to secondary model on 429/500.
 
-Updated system prompt:
+**System prompt:**
 
 ```
 You are an AI agent managing concentrated liquidity for a wstETH/USDC
 pool on Uniswap v4 on Base.
 
-You will receive structured market data from the Uniswap Trading API
-and Olas Mech predictions. Use this data to recommend:
+You will receive:
+1. Structured market data from the Uniswap Trading API (price, spread, depth)
+2. On-chain analytics from DeFiLlama (TVL, yields, protocol flows)
+3. Sentiment analysis (social signals, governance news, whale movements)
+
+Use ALL of this data to recommend:
 
 1. Optimal tick range [tickLower, tickUpper] (must be divisible by 60)
 2. Recommended swap fee (100 = 0.01%, 3000 = 0.30%, max 100000 = 10%)
 3. Confidence score 0 to 1
 4. Brief reasoning explaining your recommendation
 
-Key decision signals from Uniswap data:
+Key decision signals:
 - Spread (bid/ask width): wide spread → raise fee, widen range
 - Price impact at 10x: high impact → shallow depth → widen range
 - Price impact > current fee → fee is too low for the liquidity depth
+- TVL declining → capital flight, widen range defensively
+- Bullish sentiment → shift range above current price
+- Bearish sentiment → shift range below or widen defensively
 
 Respond using the recommend_rebalance function.
 ```
 
-User message per-cycle (structured, not prose):
+**User message per-cycle (structured, not prose):**
 
 ```
 Pool state:
@@ -816,56 +1062,122 @@ Uniswap Trading API data:
   Gas estimate: 0.0003 ETH
   Approval: active
 
-Olas Mech cross-check (8/10 succeeded):
-  Price direction: 62% up, 38% down (moderate bullish)
-  Volatility estimate: 12% annualized
-  Sentiment: moderately bullish
-  Tick range suggestion: [-202000, -201600]
-  Fee suggestion: 3500
+DeFiLlama on-chain analytics:
+  Lido TVL: $14.2B (−1.3% 24h, −0.8% 7d)
+  wstETH/USDC pool yield: 4.2% APY
+  Protocol flows: net −$180M outflow (7d)
+
+Sentiment (from Venice web search):
+  Overall: moderately bullish (confidence 0.72)
+  Signals:
+    - Lido V3 governance vote passing with 94% approval
+    - Large wstETH accumulation on Aave over past 48h
+    - ETH gas fees at monthly low
 
 Recommend optimal parameters.
 ```
 
 Venice-specific parameters:
 - `include_venice_system_prompt: false` (use only our prompt)
-- **`enable_web_search: "off"`** (all quant data provided via structured input)
+- **`enable_web_search: "off"`** (all data already provided)
 - `strip_thinking_response: false` (preserve reasoning for audit)
 
-**Optional secondary call with web search:**
+**Both calls run inside EigenCompute TEE** (see Step 6). The
+attestation covers the full pipeline: sentiment gathered → data
+assembled → analysis produced → recommendation output.
 
-After the primary structured analysis, the agent MAY make a lightweight
-second Venice call with `enable_web_search: "on"` to check for
-qualitative signals:
+**Failure mode:** If sentiment call fails, proceed with analysis
+using structured data only (Venice notes "sentiment unavailable" in
+reasoning). If analysis call fails, return null — agent skips the
+cycle.
 
+**SKILL.md update:** Add venice-analyze to Available Tools with both
+modes documented. In the ANALYZE phase, venice-analyze sentiment is
+invoked first, then venice-analyze analysis receives all structured
+data + sentiment. Replace Phase 3 heuristic with Venice-driven
+reasoning. Update error handling.
+
+---
+
+### Step 5: olas-analyze Tool (Cross-Check Layer)
+
+**Updated from original — Olas now cross-checks Venice's recommendation
+rather than providing upstream data to Venice.**
+
+Olas Mech's role is to independently validate Venice's output. After
+Venice produces a recommendation (tick range, fee, confidence), the
+agent sends it to Olas for cross-checking. This provides a safety net
+against Venice hallucinations or stale web search data.
+
+**Input:** Venice recommendation JSON (required), pool state JSON
+(required).
+
+**Output fields:** agrees (boolean), olasPrediction (direction,
+probability), confidence (0 to 1), flags (array of concerns),
+txHashes (array of Mech tx hashes).
+
+**Implementation:** Shells out to mechx CLI for 10+ parallel Mech
+requests. 120-second timeout per request. Payment via Locus wallet
+(USDC on Base).
+
+The 10 required requests now focus on validating Venice's output:
+- Price direction prediction (does it match Venice's directional bias?)
+- Volatility estimate (does it justify Venice's tick range width?)
+- Independent tick range suggestion (how far from Venice's range?)
+- Independent fee suggestion (how far from Venice's fee?)
+- Confidence cross-check (is Venice overconfident or underconfident?)
+
+**Example output:**
+
+```json
+{
+  "agrees": true,
+  "olasPrediction": { "direction": "up", "probability": 0.62 },
+  "confidence": 0.68,
+  "flags": [],
+  "txHashes": ["0x...", "0x...", "0x..."]
+}
 ```
-"Are there any significant DeFi news events, Lido governance proposals,
-or ETH ecosystem developments in the last 24 hours that could affect
-wstETH/USDC liquidity? Brief answer only."
-```
 
-This is a stretch goal — the primary recommendation comes from
-structured data alone. The qualitative check is additive context.
+**What happens when Olas disagrees:**
 
-**Failure mode:** Returns null. Agent skips the cycle.
+| Scenario | Agent Action |
+|---|---|
+| Olas agrees with Venice | Proceed with Venice recommendation at full confidence |
+| Olas partially disagrees (direction matches, magnitude differs) | Reduce confidence, proceed with caution |
+| Olas strongly disagrees (opposite direction) | Widen tick range defensively, or skip rebalance entirely |
+| Olas unavailable (budget too low or timeout) | Proceed with Venice recommendation, note "unverified" in logs |
 
-**SKILL.md update:** Add venice-analyze to Available Tools. Document
-that it takes structured Uniswap data as input (not raw web search).
-In the ANALYZE phase, venice-analyze is invoked AFTER uniswap-data
-and olas-analyze so all structured data is available. Replace Phase 3
-heuristic with Venice-driven reasoning. Update error handling.
+**Budget-adaptive:** Olas is the only paid data source. If Locus
+budget is low, agent skips Olas and proceeds with Venice recommendation
+unverified. The agent logs this decision for transparency.
+
+**Verification:**
+
+Standalone: Run `bun run src/tools/olas-analyze.ts --recommendation
+'<venice output>'`. Confirm agrees/disagrees, own prediction, flags,
+10+ tx hashes in payment-log.json.
+
+OpenClaw: Run heartbeat. Verify agent sends Venice recommendation to
+Olas AFTER Venice analysis completes. If Olas disagrees, verify agent
+adjusts behavior (widens range, reduces confidence, or skips). If
+budget is low, verify agent skips Olas and explains why.
 
 ### Step 6: eigencompute Tool
 
 **NEW tool — does not exist in the original plan.**
 
-**Purpose:** Run Venice AI inference inside an EigenCompute TEE,
-producing a verifiable attestation that the recommendation was
-computed honestly.
+**Purpose:** Run the full Venice AI pipeline (sentiment + analysis)
+inside an EigenCompute TEE, producing a verifiable attestation that
+both the sentiment gathering and the recommendation were computed
+honestly with no tampering.
 
-**Input:** Same as venice-analyze: pool state JSON (required),
-Olas results JSON (optional), Uniswap price (optional).
+**Input:** Pool state JSON (required), Uniswap data JSON with
+DeFiLlama (required).
 
-**Output:** Everything from venice-analyze plus attestation fields.
+**Output:** Sentiment (from Call #1) + recommendation (from Call #2)
++ attestation fields: attestationHash, teeProvider, computeJobId,
+verifiable (boolean).
 
 **Implementation:**
 
@@ -874,12 +1186,15 @@ Olas results JSON (optional), Uniswap price (optional).
 
 import { execSync } from 'child_process';
 
-export async function runVerifiableInference(input: VeniceInput): Promise<EigenComputeResult> {
-  // 1. Serialize input to JSON file
+export async function runVerifiableInference(input: EigenComputeInput): Promise<EigenComputeResult> {
+  // 1. Serialize input to JSON file (pool state + uniswap data + DeFiLlama)
   const inputPath = writeInputFile(input);
 
   // 2. Submit to EigenCompute
   //    This runs our Docker image inside the TEE
+  //    The image runs BOTH Venice calls sequentially:
+  //      Call #1: sentiment (web search ON)
+  //      Call #2: analysis (web search OFF, uses sentiment + all data)
   const jobId = submitEigenComputeJob({
     image: 'curatedlp/venice-analyzer:latest',
     input: inputPath,
@@ -889,11 +1204,13 @@ export async function runVerifiableInference(input: VeniceInput): Promise<EigenC
   });
 
   // 3. Wait for completion (poll or webhook)
-  const result = await waitForCompletion(jobId, { timeout: 60_000 });
+  //    Timeout is longer than single-call — two Venice API round-trips
+  const result = await waitForCompletion(jobId, { timeout: 90_000 });
 
-  // 4. Return recommendation + attestation
+  // 4. Return sentiment + recommendation + attestation
   return {
-    ...result.output,           // newTickLower, newTickUpper, newFee, etc.
+    sentiment: result.output.sentiment,    // from Call #1
+    ...result.output.recommendation,       // newTickLower, newTickUpper, newFee, etc.
     attestationHash: result.attestation.hash,
     teeProvider: 'eigencompute',
     computeJobId: jobId,
@@ -905,40 +1222,61 @@ export async function runVerifiableInference(input: VeniceInput): Promise<EigenC
 **The Dockerfile** (Step 7):
 
 ```dockerfile
-FROM node:20-slim
+FROM --platform=linux/amd64 node:20-slim
+USER root
 WORKDIR /app
 
-# Copy only what's needed for Venice inference
+# Copy only what's needed for Venice inference pipeline
 COPY package.json package-lock.json tsconfig.json ./
 RUN npm ci --production
 
 COPY src/tools/venice-analyze.ts ./src/tools/
-COPY src/lib/config.ts src/lib/types.ts src/lib/cache.ts ./src/lib/
+COPY src/lib/ ./src/lib/
 
 # Build
 RUN npx tsc
 
-# Entry point: takes pool state as arg, returns recommendation JSON
+# Expose port for HTTP trigger from agent
+EXPOSE 3000
+
+# Entry point: runs both Venice calls (sentiment + analysis)
+# Takes pool state + uniswap data as input, returns sentiment +
+# recommendation JSON on stdout
 ENTRYPOINT ["node", "dist/tools/venice-analyze.js"]
 ```
 
+Note: `--platform=linux/amd64` and `USER root` are required by
+EigenCompute's TEE environment. Port 3000 is exposed so the agent
+can trigger the compute job via HTTP. The app must bind to `0.0.0.0`.
+
 This image contains only the Venice inference logic — no private keys,
 no delegation code, no execution tools. It reads VENICE_API_KEY from
-the environment (injected by EigenCompute at runtime) and produces
-a recommendation JSON on stdout.
+the environment (injected securely by EigenCompute KMS at runtime,
+encrypted within the TEE) and produces sentiment + recommendation
+JSON on stdout.
+
+The TEE attestation covers the full pipeline: Venice web search for
+sentiment (Call #1) → analysis with all structured data + sentiment
+(Call #2) → recommendation output. Non-deterministic web search
+results from Call #1 do not affect TEE consensus — EigenCompute's
+mainnet alpha uses a single TEE instance proving code integrity,
+not output reproducibility.
 
 **EigenCompute deployment steps:**
 
-1. Build and push Docker image: `docker build -t curatedlp/venice-analyzer .`
-2. Register with EigenCompute CLI
-3. Test: submit a job with sample pool state, verify attestation returned
-4. Integrate into eigencompute.ts tool
+1. Build and push Docker image: `docker build --platform linux/amd64 -t curatedlp/venice-analyzer .`
+2. Install ecloud CLI: `npm install -g @layr-labs/ecloud-cli`
+3. Auth: `ecloud auth login` (or `ecloud auth generate --store`)
+4. Deploy: `ecloud compute app deploy` (select "Build and deploy from Dockerfile")
+5. Test: submit a job with sample pool state + uniswap data, verify
+   attestation returned and both sentiment + recommendation present
+6. Integrate into eigencompute.ts tool
 
 **SKILL.md update:** Add eigencompute to Available Tools. In the ANALYZE
 phase, the agent uses eigencompute instead of venice-analyze directly
 when verifiability is desired. The tool has the same output format
-plus attestation fields. If EigenCompute is down, fall back to direct
-venice-analyze (unverified but functional).
+plus sentiment and attestation fields. If EigenCompute is down, fall
+back to direct venice-analyze (unverified but functional).
 
 ---
 
@@ -946,7 +1284,7 @@ venice-analyze (unverified but functional).
 
 This is the EigenCloud bounty deliverable. The required artifacts:
 
-1. **Dockerfile** — packages venice-analyze into a TEE-compatible image
+1. **Dockerfile** — packages venice-analyze (both modes) into a TEE-compatible image
 2. **Docker image deployed on EigenCompute** — running and verifiable
 3. **Architecture diagram** — showing how EigenCompute fits in the stack:
 
@@ -957,29 +1295,40 @@ This is the EigenCloud bounty deliverable. The required artifacts:
        v
   eigencompute.ts (tool)
        |
-       | submits job
+       | submits job with pool state + uniswap data + DeFiLlama
        v
   +-----------------------------------------------+
-  |  EigenCompute TEE                              |
+  |  EigenCompute TEE (Intel TDX)                  |
   |                                                |
   |  Docker: curatedlp/venice-analyzer             |
   |    |                                           |
-  |    | VENICE_API_KEY injected via TEE env       |
+  |    | VENICE_API_KEY injected via TEE KMS       |
   |    |                                           |
   |    v                                           |
-  |  venice-analyze logic                          |
+  |  Venice Call #1 (web search ON)                |
+  |    → sentiment: bullish/bearish/neutral        |
+  |    → signals: governance, whales, social       |
   |    |                                           |
-  |    | calls Venice API from inside TEE          |
   |    v                                           |
-  |  recommendation JSON                           |
-  |    + TEE attestation hash                      |
+  |  Venice Call #2 (web search OFF)               |
+  |    → input: pool + uniswap + DeFiLlama         |
+  |             + sentiment from Call #1            |
+  |    → output: tick range + fee + confidence      |
+  |    |                                           |
+  |    v                                           |
+  |  sentiment + recommendation JSON               |
+  |    + single TEE attestation hash               |
   +-----------------------------------------------+
        |
-       | recommendation + attestation
+       | sentiment + recommendation + attestation
        v
   OpenClaw Agent
        |
-       | DECIDE: use verified recommendation
+       | passes recommendation to Olas for cross-check
+       v
+  olas-analyze (validates Venice output)
+       |
+       | DECIDE: use verified + cross-checked recommendation
        v
   execute-rebalance → on-chain
 ```
@@ -987,7 +1336,7 @@ This is the EigenCloud bounty deliverable. The required artifacts:
 4. **GitHub repo with README** — includes EigenCompute setup instructions
 5. **Live demo** — show the attestation hash in the agent's logs during
    the rebalance flow. "This recommendation was computed inside a TEE —
-   here's the attestation proving it."
+   here's the attestation proving both sentiment gathering and analysis."
 
 ---
 
@@ -999,11 +1348,15 @@ tools are built, the SKILL.md should be the full Phase 4 version.
 Final review checklist:
 - All 8 tools listed in Available Tools with correct invocation + output
 - Heartbeat protocol: OBSERVE (pool-reader + check-budget) → REASON →
-  ANALYZE (uniswap-quote + olas-analyze + eigencompute/venice-analyze)
-  → DECIDE → ACT → REFLECT
-- Decision Guidelines: budget-adaptive strategy, Venice-driven reasoning
+  ANALYZE (uniswap-data + eigencompute/venice-analyze [sentiment → analysis]
+  → olas-analyze [cross-check]) → DECIDE → ACT → REFLECT
+- Data flow: uniswap-data (price/spread/depth + DeFiLlama TVL/yields) →
+  Venice sentiment (web search ON) → Venice analysis (all data, web search OFF)
+  → Olas cross-check → Agent decides
+- Decision Guidelines: budget-adaptive strategy, Venice-driven reasoning,
+  Olas cross-check as safety net
 - No remnants of x402/AgentCash/market-data tool
-- EigenCompute documented as optional verifiable wrapper for Venice
+- EigenCompute documented as TEE wrapper for both Venice calls (sentiment + analysis)
 - Error handling covers all failure modes including EigenCompute timeout
 
 ---
@@ -1045,10 +1398,11 @@ remain unchanged. No x402-related packages needed.
 | Tool | Test command | What to verify |
 |---|---|---|
 | check-budget | `bun run src/tools/check-budget.ts` | Returns balance, canSpend is true |
-| uniswap-data | `bun run src/tools/uniswap-data.ts` | Returns forwardPrice, spread, priceImpact, 4 requestIds |
-| olas-analyze | `bun run src/tools/olas-analyze.ts --pool '...'` | Returns results from 10+ requests, tx hashes |
-| venice-analyze | `bun run src/tools/venice-analyze.ts --pool '...'` | Returns recommendation with valid ticks, uses structured Uniswap data |
-| eigencompute | `bun run src/tools/eigencompute.ts --pool '...'` | Returns recommendation + attestationHash + verifiable=true |
+| uniswap-data | `bun run src/tools/uniswap-data.ts` | Returns forwardPrice, spread, priceImpact, 4 requestIds + DeFiLlama TVL/yields |
+| venice-analyze (sentiment) | `bun run src/tools/venice-analyze.ts --mode sentiment` | Returns sentiment, confidence, signals array (web search ON) |
+| venice-analyze (analysis) | `bun run src/tools/venice-analyze.ts --mode analyze --pool '...' --uniswap '...' --sentiment '...'` | Returns recommendation with valid ticks, confidence, reasoning (web search OFF) |
+| olas-analyze | `bun run src/tools/olas-analyze.ts --recommendation '<venice output>'` | Returns agrees/disagrees, own prediction, flags, 10+ tx hashes |
+| eigencompute | `bun run src/tools/eigencompute.ts --pool '...' --uniswap '...'` | Returns sentiment + recommendation + attestationHash + verifiable=true |
 
 ### Incremental OpenClaw integration
 
@@ -1060,28 +1414,33 @@ remain unchanged. No x402-related packages needed.
        v
   Phase 4a: budget awareness
        |
-       | Add uniswap-data (4 calls: forward, reverse, large, approval)
-       | Verify: agent fetches price + spread + depth, includes in reasoning
+       | Add uniswap-data (4 Uniswap API calls + DeFiLlama)
+       | Verify: agent fetches price + spread + depth + TVL, includes in reasoning
        | Verify: 4 requestIds logged per cycle
        v
-  Phase 4b: + structured price data
+  Phase 4b: + structured price data + on-chain analytics
        |
-       | Add olas-analyze
-       | Verify: agent sends 10+ Mech requests, uses results
-       | Verify: payment-log.json has Olas tx hashes
-       v
-  Phase 4c: + Olas cross-check
-       |
-       | Add venice-analyze
-       | Verify: agent passes structured Uniswap data + Olas to Venice
-       | Verify: Venice reasons about spread, depth, predictions (not web)
+       | Add venice-analyze (two-call pipeline)
+       | Verify: Call #1 gathers sentiment (web search ON)
+       | Verify: Call #2 receives uniswap data + DeFiLlama + sentiment (web search OFF)
+       | Verify: Venice references specific spread, depth, TVL, sentiment in reasoning
        | Verify: agent reasons about confidence, acts or skips
        v
-  Phase 4d: + Venice intelligence
+  Phase 4c: + Venice intelligence (sentiment + analysis)
        |
-       | Add eigencompute
-       | Verify: Venice runs inside TEE, attestation returned
+       | Add olas-analyze (cross-checks Venice output)
+       | Verify: agent sends Venice recommendation to Olas for validation
+       | Verify: if Olas disagrees, agent adjusts (widens range, skips)
+       | Verify: payment-log.json has Olas tx hashes
+       v
+  Phase 4d: + Olas cross-check
+       |
+       | Add eigencompute (wraps both Venice calls in TEE)
+       | Verify: both Venice calls run inside TEE, single attestation returned
        | Verify: agent logs attestation hash in REFLECT
+       v
+  Phase 4e: + verifiable compute
+       |
        v
   Phase 4 complete: full autonomous + verifiable reasoning
 ```
@@ -1099,12 +1458,15 @@ Run the agent for 3+ heartbeat cycles on Base Sepolia and verify:
 - [ ] Agent explains its data strategy in reasoning log
 
 **ANALYZE phase:**
-- [ ] uniswap-data returns forwardPrice, spread, priceImpact, 4 requestIds
-- [ ] Agent derives spread and depth signals from quote comparison
-- [ ] olas-analyze returns 10+ Mech results with tx hashes
-- [ ] venice-analyze returns recommendation with confidence + reasoning
-- [ ] Venice references specific Uniswap numbers in reasoning (not generic)
-- [ ] eigencompute returns attestation hash (verifiable=true)
+- [ ] uniswap-data returns forwardPrice, spread, priceImpact, 4 requestIds + DeFiLlama TVL/yields
+- [ ] Agent derives spread, depth, and macro signals from quote comparison + DeFiLlama
+- [ ] venice-analyze Call #1 returns sentiment with confidence + signals (web search ON)
+- [ ] venice-analyze Call #2 returns recommendation with confidence + reasoning (web search OFF)
+- [ ] Venice references specific Uniswap numbers + DeFiLlama + sentiment in reasoning (not generic)
+- [ ] eigencompute returns attestation hash covering both Venice calls (verifiable=true)
+- [ ] olas-analyze receives Venice recommendation and cross-checks it
+- [ ] olas-analyze returns agrees/disagrees, own prediction, flags, 10+ tx hashes
+- [ ] Agent adjusts when Olas disagrees (widens range, reduces confidence, or skips)
 
 **DECIDE phase:**
 - [ ] Agent reasons holistically about whether to act
@@ -1133,11 +1495,11 @@ Run the agent for 3+ heartbeat cycles on Base Sepolia and verify:
 
 | Bounty | Prize | How Phase 4 Satisfies It |
 |---|---|---|
-| Venice AI | $11,500 | venice-analyze receives structured Uniswap data + Olas predictions. Function calling produces structured recommendations. Reasoning trail shows Venice analyzing exact spread, depth, and directional signals. Private inference (zero data retention). |
-| EigenCloud | $5,000 | Venice inference packaged as Docker image, deployed on EigenCompute TEE. Every recommendation has a verifiable attestation. Working demo shows attestation hash in agent logs. |
+| Venice AI | $11,500 | venice-analyze runs a two-call pipeline: Call #1 gathers sentiment via web search, Call #2 analyzes all structured data (Uniswap + DeFiLlama + sentiment) with web search OFF. Function calling produces structured recommendations. Reasoning trail shows Venice analyzing exact spread, depth, TVL, and sentiment signals. Private inference (zero data retention). |
+| EigenCloud | $5,000 | Both Venice calls packaged as Docker image, deployed on EigenCompute TEE. Single attestation covers full pipeline (sentiment → analysis → recommendation). Working demo shows attestation hash in agent logs. |
 | Locus | $3,000 | check-budget queries Locus wallet. Olas Mech payments flow through Locus with per-tx and daily spending controls. Agent adapts behavior based on remaining budget. |
-| Olas | $1,000 | olas-analyze sends 10+ distinct Mech requests per session. Each generates on-chain tx hash. Results are load-bearing input to Venice. |
-| Uniswap | $5,000 | uniswap-data makes 4 real API calls per cycle with real key. Forward/reverse/large quotes + check_approval. 4 requestIds logged per cycle = 1,152+/day. Combined with pool-reader reading from Uniswap v4 hook + AI Skills. Deepest API integration of any bounty submission. |
+| Olas | $1,000 | olas-analyze sends 10+ distinct Mech requests per session to cross-check Venice's recommendation. Each generates on-chain tx hash. Results are load-bearing validation — agent adjusts or skips when Olas disagrees with Venice. |
+| Uniswap | $5,000 | uniswap-data makes 4 real API calls per cycle with real key. Forward/reverse/large quotes + check_approval. 4 requestIds logged per cycle = 1,152+/day. DeFiLlama analytics (TVL, yields) integrated in same tool. Combined with pool-reader reading from Uniswap v4 hook + AI Skills. Deepest API integration of any bounty submission. |
 
 Phase 4 total: $20,500. Combined with MetaMask ($5,000) + ENS ($1,500) + Self ($1,000) from other phases = **$33,000 grand total**.
 
@@ -1166,9 +1528,9 @@ Phase 4 total: $20,500. Combined with MetaMask ($5,000) + ENS ($1,500) + Self ($
 | File | Purpose |
 |---|---|
 | `src/tools/check-budget.ts` | Locus wallet balance + spending controls |
-| `src/tools/uniswap-data.ts` | Uniswap Trading API × 4 calls (price, spread, depth, approval) |
-| `src/tools/olas-analyze.ts` | Olas Mech 10+ requests |
-| `src/tools/venice-analyze.ts` | Venice AI inference (structured Uniswap data as input, web search off) |
+| `src/tools/uniswap-data.ts` | Uniswap Trading API × 4 calls (price, spread, depth, approval) + DeFiLlama on-chain analytics (TVL, yields, flows) |
+| `src/tools/venice-analyze.ts` | Venice AI two-call pipeline: Call #1 sentiment (web search ON), Call #2 analysis (web search OFF, all structured data + sentiment as input) |
+| `src/tools/olas-analyze.ts` | Olas Mech 10+ requests — cross-checks Venice recommendation |
 | `src/tools/eigencompute.ts` | EigenCompute TEE wrapper |
 | `src/lib/config.ts` | Env var loading + validation |
 | `src/lib/cache.ts` | File-persisted cache with TTL |
@@ -1180,7 +1542,7 @@ Phase 4 total: $20,500. Combined with MetaMask ($5,000) + ENS ($1,500) + Self ($
 
 | File | Reason |
 |---|---|
-| `src/tools/market-data.ts` | Merit/x402 bounty dropped. Venice web search replaces it. |
+| `src/tools/market-data.ts` | Merit/x402 bounty dropped. Replaced by: Uniswap API + DeFiLlama for structured data, Venice web search for sentiment. |
 
 **Modified files:**
 
