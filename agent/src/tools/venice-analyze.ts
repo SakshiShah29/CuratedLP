@@ -210,6 +210,13 @@ async function callWithFallback(
   tools: OpenAI.Chat.Completions.ChatCompletionTool[],
   veniceParams: Record<string, unknown>
 ): Promise<{ response: OpenAI.Chat.Completions.ChatCompletion; model: string }> {
+  // Keepalive: print progress every 10s so OpenClaw knows the process is alive
+  let elapsed = 0;
+  const keepalive = setInterval(() => {
+    elapsed += 10;
+    process.stderr.write(`{"keepalive":true,"elapsed_s":${elapsed},"model":"${VENICE_PRIMARY_MODEL}"}\n`);
+  }, 10_000);
+
   try {
     const response = await callVenice(
       VENICE_PRIMARY_MODEL,
@@ -217,14 +224,15 @@ async function callWithFallback(
       tools,
       veniceParams
     );
+    clearInterval(keepalive);
     return { response, model: VENICE_PRIMARY_MODEL };
   } catch (err: unknown) {
     const status = (err as { status?: number }).status;
     if (status === 429 || status === 500 || status === 503) {
-      console.error(
+      process.stderr.write(
         JSON.stringify({
           warning: `Primary model ${VENICE_PRIMARY_MODEL} returned ${status}, falling back to ${VENICE_FALLBACK_MODEL}`,
-        })
+        }) + "\n"
       );
       const response = await callVenice(
         VENICE_FALLBACK_MODEL,
@@ -232,8 +240,10 @@ async function callWithFallback(
         tools,
         veniceParams
       );
+      clearInterval(keepalive);
       return { response, model: VENICE_FALLBACK_MODEL };
     }
+    clearInterval(keepalive);
     throw err;
   }
 }
@@ -573,6 +583,8 @@ async function runAnalyze(): Promise<void> {
 // ── Main ────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
+  // Print immediately so OpenClaw knows the process is alive (prevents early kill)
+  process.stderr.write(`{"status":"running","mode":"${mode}","model":"${VENICE_PRIMARY_MODEL}","ts":"${new Date().toISOString()}"}\n`);
   if (mode === "sentiment") {
     await runSentiment();
   } else {

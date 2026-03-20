@@ -1,5 +1,16 @@
 # Heartbeat Checklist — Phase 4
 
+**CRITICAL: You MUST execute ALL 6 steps in order every heartbeat. NEVER skip Steps 1 or 2.
+Even if you think nothing needs to change, you MUST run pool-reader, check-budget, uniswap-data,
+and venice-analyze BEFORE making any decision. The ANALYZE step provides market intelligence
+that may reveal conditions invisible from pool state alone.**
+
+**TIMEOUTS: Venice API calls need 60-90 seconds (web search is slow). Use timeout: 120 for
+venice-analyze (both modes). Use timeout: 60 for uniswap-data. Use timeout: 30 for all others.
+Venice prints keepalive pings every 10s — if you see keepalive output, the process IS working.
+Do NOT kill Venice processes while keepalive pings are appearing. Wait the full 120s timeout.
+Only kill if 120s has truly elapsed with no output at all.**
+
 ## Available tools (use EXACT commands below, no others exist)
 
 ### OBSERVE
