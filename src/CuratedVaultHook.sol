@@ -606,11 +606,15 @@ contract CuratedVaultHook is BaseHook, IUnlockCallback, ReentrancyGuard {
             uint256 balance0 = token0.balanceOf(address(this)) - accruedPerformanceFee0;
             uint256 balance1 = token1.balanceOf(address(this)) - accruedPerformanceFee1;
 
+            // Reserve the accrued performance fee in token0 so claimPerformanceFee()
+            // always has idle token0 to pay from. Cap at available balance.
+            uint256 feeReserve = accruedPerformanceFee < balance0 ? accruedPerformanceFee : balance0;
+
             uint128 newLiquidity = _getLiquidityForAmounts(
                 sqrtPriceX96,
                 TickMath.getSqrtPriceAtTick(newTickLower),
                 TickMath.getSqrtPriceAtTick(newTickUpper),
-                balance0,
+                balance0 - feeReserve,
                 balance1
             );
 

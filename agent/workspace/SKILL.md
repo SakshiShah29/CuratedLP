@@ -43,7 +43,7 @@ You have 3 tools. Invoke them via exec. Each outputs JSON to stdout.
 Reads all on-chain state from the CuratedVaultHook contract.
 
 Invocation:
-  npx tsx src/tools/pool-reader.ts
+  npx tsx ../src/tools/pool-reader.ts
 
 Takes no arguments. Returns JSON with fields:
   - tickLower, tickUpper: current position range boundaries
@@ -67,7 +67,7 @@ validates the CuratedVaultCaveatEnforcer bounds, then the Agent Smart
 Account executes rebalance() on the hook.
 
 Invocation:
-  npx tsx src/tools/execute-rebalance.ts --tickLower <int> --tickUpper <int> --fee <int>
+  npx tsx ../src/tools/execute-rebalance.ts --tickLower <int> --tickUpper <int> --fee <int>
 
 Arguments:
   - tickLower: new lower tick (must be divisible by 60)
@@ -97,7 +97,7 @@ allows claimPerformanceFee() with target-check only — no fee bounds
 or rate limiting applies to fee claims.
 
 Invocation:
-  npx tsx src/tools/claim-fees.ts
+  npx tsx ../src/tools/claim-fees.ts
 
 Takes no arguments. Returns JSON with fields:
   - success: boolean

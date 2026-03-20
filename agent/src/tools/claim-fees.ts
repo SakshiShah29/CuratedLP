@@ -43,6 +43,9 @@ const RPC_URL = process.env.BASE_SEPOLIA_RPC!;
 const HOOK_ADDRESS = process.env.HOOK_ADDRESS as Address;
 const ENFORCER_ADDRESS = process.env.ENFORCER_ADDRESS as Address;
 
+// Token0 address (MockERC20 on Base Sepolia — from poolKey.currency0)
+const TOKEN0_ADDRESS = "0x0F72E0a52dcef684D5C799f62236e095Ef9c3269" as Address;
+
 const MIN_FEE = Number(process.env.DELEGATION_MIN_FEE ?? "100");
 const MAX_FEE = Number(process.env.DELEGATION_MAX_FEE ?? "50000");
 const MIN_BLOCK_INTERVAL = Number(process.env.DELEGATION_MIN_BLOCK_INTERVAL ?? "30");
@@ -61,6 +64,34 @@ async function main() {
 
   const publicClient = createPublicClient({ chain, transport: http(RPC_URL) });
   const environment = getSmartAccountsEnvironment(chain.id);
+
+  // Pre-flight: check hook's idle token0 balance covers the accrued fee.
+  // After a rebalance all token0 is deployed as liquidity — the hook has no
+  // idle balance to pay from. Skip gracefully rather than hitting a Panic.
+  const [accruedFee, hookBalance] = await Promise.all([
+    publicClient.readContract({
+      address: HOOK_ADDRESS,
+      abi: [{ type: "function", name: "accruedPerformanceFee", inputs: [], outputs: [{ type: "uint256" }], stateMutability: "view" }],
+      functionName: "accruedPerformanceFee",
+    }),
+    publicClient.readContract({
+      address: TOKEN0_ADDRESS,
+      abi: [{ type: "function", name: "balanceOf", inputs: [{ name: "account", type: "address" }], outputs: [{ type: "uint256" }], stateMutability: "view" }],
+      functionName: "balanceOf",
+      args: [HOOK_ADDRESS],
+    }),
+  ]);
+
+  if (hookBalance < accruedFee) {
+    console.log(JSON.stringify({
+      success: false,
+      error: "InsufficientHookBalance",
+      accruedFee: accruedFee.toString(),
+      hookToken0Balance: hookBalance.toString(),
+      note: "Fees track swap volume but token0 is deployed as liquidity. Will be claimable after next rebalance collects LP fees.",
+    }, null, 2));
+    process.exit(0); // Not an error — try again after next rebalance
+  }
 
   const curatorSigner = privateKeyToAccount(CURATOR_KEY);
   const curatorSmartAccount = await toMetaMaskSmartAccount({
@@ -130,9 +161,13 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error(JSON.stringify({
+  const msg: string = err.message ?? String(err);
+  // CuratedVaultHook_NoFeesToClaim() — not an error, just nothing to claim yet.
+  const noFees = msg.includes("0x69d4b6b7") || msg.includes("NoFeesToClaim");
+  console.log(JSON.stringify({
     success: false,
-    error: err.message ?? String(err),
-  }));
-  process.exit(1);
+    error: noFees ? "NoFeesToClaim" : msg.slice(0, 200),
+  }, null, 2));
+  // Exit 0 for NoFeesToClaim — it's an expected condition, not a failure.
+  process.exit(noFees ? 0 : 1);
 });

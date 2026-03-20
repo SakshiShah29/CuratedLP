@@ -136,7 +136,7 @@ async function main() {
       outputs: [],
     }],
     functionName: "rebalance",
-    args: [tickLower, tickUpper, fee, 0n, 0n],
+    args: [tickLower, tickUpper, fee, 2n ** 256n - 1n, 2n ** 256n - 1n], // type(uint256).max — skip idle dust check
   });
 
   // Redeem the delegation.
