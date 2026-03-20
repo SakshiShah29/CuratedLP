@@ -4,7 +4,12 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "pool-reader":   "npx tsx src/tools/pool-reader.ts",
+    "check-budget":  "npx tsx src/tools/check-budget.ts",
+    "olas-analyze":  "npx tsx src/tools/olas-analyze.ts",
+    "claim-fees":    "npx tsx src/tools/claim-fees.ts",
+    "rebalance":     "npx tsx src/tools/execute-rebalance.ts"
   },
   "keywords": [],
   "author": "",

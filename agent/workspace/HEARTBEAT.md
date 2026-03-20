@@ -1,110 +1,181 @@
-# Heartbeat Checklist
+# Heartbeat Checklist — Phase 4
 
-## Available tools (use EXACT filenames below, no others exist)
-- pool-reader:           npx tsx ../src/tools/pool-reader.ts
-- uniswap-data:          npx tsx ../src/tools/uniswap-data.ts
-- venice-analyze:        npx tsx ../src/tools/venice-analyze.ts --mode <sentiment|analyze> [--pool '<json>'] [--uniswap '<json>'] [--sentiment '<json>']
-- claim fees:            npx tsx ../src/tools/claim-fees.ts
-- rebalance:             npx tsx ../src/tools/execute-rebalance.ts --tickLower <N> --tickUpper <N> --fee <N>
+## Available tools (use EXACT commands below, no others exist)
 
-Each time you run, follow these steps in order:
+### OBSERVE
+- pool-reader:    npx tsx ../src/tools/pool-reader.ts
+- check-budget:   npx tsx ../src/tools/check-budget.ts
 
-1. OBSERVE — Run pool-reader:
-   npx tsx ../src/tools/pool-reader.ts
+### ANALYZE
+- uniswap-data:   npx tsx ../src/tools/uniswap-data.ts
+- venice-analyze: npx tsx ../src/tools/venice-analyze.ts --mode <sentiment|analyze> [--pool '<json>'] [--uniswap '<json>'] [--sentiment '<json>']
+- olas-analyze:   npx tsx ../src/tools/olas-analyze.ts --pool '<pool-reader JSON>'
 
-   If it fails, log the error and stop. Wait for next heartbeat.
+### ACT
+- rebalance:      npx tsx ../src/tools/execute-rebalance.ts --tickLower <N> --tickUpper <N> --fee <N>
+- claim fees:     npx tsx ../src/tools/claim-fees.ts
 
-2. REASON — Read the JSON output. Check: accrued fees to claim,
-   activeCuratorId, liquidity, idle token imbalance.
-   If activeCuratorId is 0 or totalLiquidity is 0, skip to step 6.
+---
 
-3. ANALYZE — Gather external data and get Venice AI recommendation:
+## Step 1 — OBSERVE
 
-   a) Run uniswap-data for structured market signals:
-      npx tsx ../src/tools/uniswap-data.ts
+Run both tools. Read their output.
 
-      Returns Uniswap quote data (price, spread, depth, approval)
-      plus on-chain analytics from DeFiLlama (Lido TVL) and DexScreener
-      (pool liquidity, volume, estimated APY). All free, no paid keys.
-      If it fails, proceed without it — note missing data.
+```
+npx tsx ../src/tools/pool-reader.ts
+npx tsx ../src/tools/check-budget.ts
+```
 
-   b) Run venice-analyze in sentiment mode (web search ON):
-      npx tsx ../src/tools/venice-analyze.ts --mode sentiment
+If pool-reader fails → abort the heartbeat entirely. No pool state = no decisions.
+If check-budget fails → continue with MINIMAL strategy (strategy: "MINIMAL", canSpend: false).
 
-      Returns qualitative signals: social sentiment, governance news,
-      whale movements. If it fails, proceed without sentiment data.
+From check-budget, read `strategy`:
+- FULL ($1+ remaining)    → run all ANALYZE tools including olas-analyze
+- PARTIAL ($0.10–$1)      → run uniswap-data + venice-analyze, skip olas-analyze (use cached if available)
+- MINIMAL (< $0.10)       → run uniswap-data + venice-analyze, skip olas-analyze
+- CACHE_ONLY ($0 / error) → run uniswap-data + venice-analyze, skip olas-analyze
 
-   c) Run venice-analyze in analyze mode (web search OFF):
-      npx tsx ../src/tools/venice-analyze.ts --mode analyze \
-        --pool '<pool-reader JSON>' \
-        --uniswap '<uniswap-data JSON>' \
-        --sentiment '<sentiment JSON from step b>'
+---
 
-      Pass whatever data you have — omit --uniswap or --sentiment if
-      those steps failed. Venice works with whatever is provided.
+## Step 2 — ANALYZE
 
-      Returns: newTickLower, newTickUpper, newFee, confidence, reasoning.
+Run the free data tools first, then paid tools if budget allows.
 
-      If this fails, fall back to the simple heuristic in RULE 2 below.
+a) Run uniswap-data for structured market signals:
+```
+npx tsx ../src/tools/uniswap-data.ts
+```
 
-   Key signals from uniswap-data (used by Venice and your own reasoning):
-   - spreadBps > 50 = volatile → widen range, raise fee
-   - spreadBps < 10 = calm → tighter range, lower fee
-   - priceImpactBps > current fee → fee is too low
-   - lidoTvlChange24h negative → capital flight → widen range defensively
-   - lidoTvlChange7d sustained decline → reduce confidence
-   - poolLiquidity low → shallow depth → widen range, raise fee
-   - poolVolume24h declining → demand falling → wider range
-   - poolFeeApyEstimate → is our pool competitive?
+Returns Uniswap quote data (price, spread, depth, approval) plus on-chain analytics
+from DeFiLlama (Lido TVL) and DexScreener (pool liquidity, volume, estimated APY).
+All free, no paid keys. If it fails, proceed without it — note missing data.
 
-4. DECIDE — Apply these rules IN ORDER:
+Key signals:
+- spreadBps > 50 = volatile → widen range, raise fee
+- spreadBps < 10 = calm → tighter range, lower fee
+- priceImpactBps > current fee → fee is too low
+- lidoTvlChange24h negative → capital flight → widen range defensively
+- poolLiquidity low → shallow depth → widen range, raise fee
+- poolVolume24h declining → demand falling → wider range
 
-   RULE 1 — CLAIM RULE:
-   If accruedPerformanceFee > 0, you MUST claim. Always. Any non-zero value = claim.
+b) Run venice-analyze in sentiment mode (web search ON):
+```
+npx tsx ../src/tools/venice-analyze.ts --mode sentiment
+```
+Returns qualitative signals: social sentiment, governance news, whale movements.
+If it fails, proceed without sentiment data.
 
-   IMPORTANT: idleToken0 must be >= accruedPerformanceFee for claim to succeed.
-   - If idleToken0 >= accruedPerformanceFee: run claim-fees directly.
-     Command: npx tsx ../src/tools/claim-fees.ts
-   - If idleToken0 < accruedPerformanceFee (e.g. idleToken0 == 0): REBALANCE FIRST
-     (same or tighter range) to collect LP fees, then run claim-fees.
-     Rebalance: npx tsx ../src/tools/execute-rebalance.ts --tickLower <N> --tickUpper <N> --fee <N>
-     Then claim: npx tsx ../src/tools/claim-fees.ts
-     If rebalance fails with "RebalanceTooFrequent", skip this heartbeat — try next time.
+c) Run venice-analyze in analyze mode (web search OFF):
+```
+npx tsx ../src/tools/venice-analyze.ts --mode analyze \
+  --pool '<pool-reader JSON>' \
+  --uniswap '<uniswap-data JSON>' \
+  --sentiment '<sentiment JSON from step b>'
+```
+Pass whatever data you have — omit --uniswap or --sentiment if those steps failed.
+Venice works with whatever is provided.
 
-   RULE 2 — REBALANCE RULE:
-   If Venice returned a recommendation with confidence >= 0.6 AND the
-   recommended parameters differ meaningfully from current state:
-   → Use Venice's newTickLower, newTickUpper, newFee.
+Returns: newTickLower, newTickUpper, newFee, confidence, reasoning.
+If this fails, fall back to the simple heuristic in RULE 2 mentioned in Step 3 below.
 
-   If Venice was unavailable or confidence < 0.6, fall back to simple heuristic:
-   → If range is full range [-887220, 887220] OR idle tokens are clearly
-     imbalanced, rebalance conservatively using uniswap-data signals:
-     - Wide spread → wider range, higher fee
-     - Calm spread → tighter range, lower fee
-     - High price impact → raise fee to compensate
+d) If strategy is FULL, run olas-analyze for cross-check:
+```
+npx tsx ../src/tools/olas-analyze.ts --pool '<paste full pool-reader JSON here>'
+```
+Provides independent market predictions to cross-check Venice's recommendation.
 
-   Command: npx tsx ../src/tools/execute-rebalance.ts --tickLower <N> --tickUpper <N> --fee <N>
-   NOTE: If this fails with "RebalanceTooFrequent", skip silently.
+If olas-analyze succeeds, compare its signals with Venice's recommendation:
+- If priceDirectionBull aligns with Venice's directional bias → supports Venice
+- If Olas strongly disagrees (bull > 0.65 but Venice is bearish, or vice versa) → reduce confidence
+- Use suggestedTickLower/Upper/Fee as a sanity check on Venice's values
 
-   RULE 3 — DO NOTHING:
-   Only if accruedPerformanceFee == 0 AND position looks healthy (not
-   full range, balanced idle tokens, Venice confidence < 0.6 or
-   recommended change is trivially small).
+If olas-analyze fails, times out, or is skipped due to budget → continue with Venice recommendation alone.
 
-   Decide ONE of:
-   A) Do nothing — position healthy, no fees to claim, Venice agrees or unavailable
-   B) Claim fees — accruedPerformanceFee > 0, idleToken0 sufficient
-   C) Rebalance — Venice recommends with confidence >= 0.6, or heuristic triggers
-   D) Rebalance then claim — accruedPerformanceFee > 0, idleToken0 insufficient
-   E) Claim then rebalance — both fee claim AND range fix needed
+---
 
-5. ACT — If you decided to act, invoke the tool using the EXACT commands above.
-   If a transaction fails, log the error and stop. Do not retry.
+## Step 3 — DECIDE
 
-6. REFLECT — Reply with a 2-3 line summary:
-   - What data you gathered (pool state, uniswap signals, sentiment, Venice recommendation)
-   - What Venice recommended (tick range, fee, confidence, key reasoning)
-   - What you decided and why (reference specific numbers: spread, depth, TVL, sentiment)
-   - If you acted, note the tx hash
-   - If Venice was unavailable, note fallback to heuristic
-   End with HEARTBEAT_OK if no alert is needed.
+Apply these rules IN ORDER using all available data:
+
+### RULE 1 — CLAIM RULE
+If `accruedPerformanceFee > 0`, you MUST claim. Any non-zero value = claim.
+
+IMPORTANT: idleToken0 must be >= accruedPerformanceFee for claim to succeed.
+- If idleToken0 >= accruedPerformanceFee → run claim-fees directly
+- If idleToken0 < accruedPerformanceFee (e.g. idleToken0 == 0) → REBALANCE FIRST
+  (same or tighter range) to collect LP fees, THEN claim-fees.
+  If rebalance fails with "RebalanceTooFrequent", skip this heartbeat — try next time.
+
+### RULE 2 — REBALANCE RULE
+
+**Primary: Venice AI recommendation**
+
+If Venice returned a recommendation with confidence >= 0.6 AND the recommended
+parameters differ meaningfully from current state:
+→ Use Venice's newTickLower, newTickUpper, newFee.
+
+If Olas data is available, cross-check:
+- If Olas agrees directionally with Venice → proceed at full confidence
+- If Olas partially disagrees (direction matches, magnitude differs) → proceed with caution
+- If Olas strongly disagrees (opposite direction) → widen range defensively or skip
+
+**Fallback: Phase 3 simple heuristic (only if Venice unavailable or confidence < 0.6)**
+
+Rebalance if ANY of:
+- Range is full range [-887220, 887220] — tighten to ~[-6000, 6000]
+- idleToken0 and idleToken1 are clearly imbalanced (position may be out-of-range)
+- Olas suggestedTickLower/Upper differ significantly from current range
+  AND priceDirectionBull confidence is high (>0.65 or <0.35)
+- Olas suggestedFee differs from currentFee by more than 500 bps
+
+For tick choice (in priority order):
+1. Use Olas suggestedTickLower/Upper if available and confidence > 0.6
+2. Otherwise: keep current range or shift by one tick spacing (60) toward the imbalance
+
+For fee choice (in priority order):
+1. Use Olas suggestedFee if available and within delegation bounds [100, 50000]
+2. Otherwise: keep currentFee or adjust by 500 bps max
+
+Constraint: Cannot rebalance more than once per 30 blocks. If "RebalanceTooFrequent" → skip silently.
+
+### RULE 3 — DO NOTHING
+Only if:
+- accruedPerformanceFee == 0
+- Venice confidence is below 0.6 (or Venice unavailable and Phase 3 heuristic shows no issue)
+- Position appears healthy (in-range, not full-range)
+- No strong signal to change range or fee
+
+Doing nothing is valid and often the right call.
+
+---
+
+## Step 4 — DECIDE (final choice)
+
+Choose ONE outcome:
+- A) Do nothing — fees zero AND position healthy AND no strong signal
+- B) Claim fees only — accruedPerformanceFee > 0 AND idleToken0 sufficient
+- C) Rebalance only — range/fee adjustment needed, no fees to claim
+- D) Rebalance then claim — accruedPerformanceFee > 0 AND idleToken0 < accruedFee
+- E) Claim then rebalance — fees claimable AND range needs fixing (idleToken0 sufficient)
+
+---
+
+## Step 5 — ACT
+
+If acting, use the EXACT commands above.
+If a transaction fails → log the error, do NOT retry in the same heartbeat.
+
+---
+
+## Step 6 — REFLECT
+
+Reply with a 3-4 line summary:
+- What pool-reader showed (fee, range, accruedFee, idle tokens)
+- What check-budget showed (strategy, balance)
+- What uniswap-data showed (spread, depth, TVL — if available)
+- What Venice recommended (tick range, fee, confidence — if available)
+- What Olas said (direction, suggested ticks/fee — if ran)
+- What you decided and why
+
+End with HEARTBEAT_OK if no alert needed, or HEARTBEAT_ALERT: <reason> if something is wrong
+(e.g. pool-reader failed, budget critically low, transaction reverted unexpectedly).
