@@ -219,21 +219,27 @@ async function fetchOnChainAnalytics(): Promise<OnChainAnalytics> {
   return result;
 }
 
-// ── Main ────────────────────────────────────────────────────────────
+// ── Rate-limited sequential caller ──────────────────────────────────
 
-async function main(): Promise<void> {
+const RATE_LIMIT_DELAY_MS = 350; // 3 RPS limit → 350ms between calls
+
+async function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function fetchUniswapQuotes(): Promise<{
+  forward: QuoteResponse | null;
+  reverse: QuoteResponse | null;
+  large: QuoteResponse | null;
+  approval: ApprovalResponse | null;
+  warnings: string[];
+}> {
   const warnings: string[] = [];
 
-  // 5 parallel calls: 4 Uniswap + on-chain analytics (DeFiLlama + DexScreener)
-  const [
-    forwardResult,
-    reverseResult,
-    largeResult,
-    approvalResult,
-    analyticsResult,
-  ] = await Promise.allSettled([
-    // Call 1: Forward quote — wstETH → USDC (current price)
-    postQuote({
+  // Call 1: Forward quote — wstETH → USDC (current price)
+  let forward: QuoteResponse | null = null;
+  try {
+    forward = await postQuote({
       type: "EXACT_INPUT",
       tokenIn: WSTETH,
       tokenOut: USDC,
@@ -241,10 +247,17 @@ async function main(): Promise<void> {
       tokenOutChainId: CHAIN_ID,
       amount: ONE_WSTETH,
       swapper: HOOK_ADDRESS,
-    }),
+    });
+  } catch (e: any) {
+    warnings.push(`Forward quote failed: ${e.message}`);
+  }
 
-    // Call 2: Reverse quote — USDC → wstETH (for bid/ask spread)
-    postQuote({
+  await delay(RATE_LIMIT_DELAY_MS);
+
+  // Call 2: Reverse quote — USDC → wstETH (for bid/ask spread)
+  let reverse: QuoteResponse | null = null;
+  try {
+    reverse = await postQuote({
       type: "EXACT_INPUT",
       tokenIn: USDC,
       tokenOut: WSTETH,
@@ -252,10 +265,17 @@ async function main(): Promise<void> {
       tokenOutChainId: CHAIN_ID,
       amount: USDC_3400,
       swapper: HOOK_ADDRESS,
-    }),
+    });
+  } catch (e: any) {
+    warnings.push(`Reverse quote failed: ${e.message}`);
+  }
 
-    // Call 3: Large quote — 10 wstETH → USDC (price impact / depth)
-    postQuote({
+  await delay(RATE_LIMIT_DELAY_MS);
+
+  // Call 3: Large quote — 10 wstETH → USDC (price impact / depth)
+  let large: QuoteResponse | null = null;
+  try {
+    large = await postQuote({
       type: "EXACT_INPUT",
       tokenIn: WSTETH,
       tokenOut: USDC,
@@ -263,30 +283,50 @@ async function main(): Promise<void> {
       tokenOutChainId: CHAIN_ID,
       amount: TEN_WSTETH,
       swapper: HOOK_ADDRESS,
-    }),
+    });
+  } catch (e: any) {
+    warnings.push(`Large quote failed: ${e.message}`);
+  }
 
-    // Call 4: Check approval status
-    postCheckApproval({
+  await delay(RATE_LIMIT_DELAY_MS);
+
+  // Call 4: Check approval status
+  let approval: ApprovalResponse | null = null;
+  try {
+    approval = await postCheckApproval({
       walletAddress: HOOK_ADDRESS,
       token: WSTETH,
       amount: MAX_UINT256,
       chainId: CHAIN_ID,
-    }),
+    });
+  } catch (e: any) {
+    warnings.push(`Approval check failed: ${e.message}`);
+  }
 
-    // Call 5: DexScreener pool analytics (free, no key)
+  return { forward, reverse, large, approval, warnings };
+}
+
+// ── Main ────────────────────────────────────────────────────────────
+
+async function main(): Promise<void> {
+  // Uniswap calls run sequentially (350ms apart, 3 RPS limit)
+  // Analytics calls run in parallel (different APIs, no shared rate limit)
+  const [uniswapResult, analyticsResult] = await Promise.allSettled([
+    fetchUniswapQuotes(),
     fetchOnChainAnalytics(),
   ]);
 
-  // ── Extract results (partial success is fine) ──
+  const warnings: string[] = [];
 
-  const forward =
-    forwardResult.status === "fulfilled" ? forwardResult.value : null;
-  const reverse =
-    reverseResult.status === "fulfilled" ? reverseResult.value : null;
-  const large =
-    largeResult.status === "fulfilled" ? largeResult.value : null;
-  const approval =
-    approvalResult.status === "fulfilled" ? approvalResult.value : null;
+  // ── Extract Uniswap results ──
+  const uniswap =
+    uniswapResult.status === "fulfilled"
+      ? uniswapResult.value
+      : { forward: null, reverse: null, large: null, approval: null, warnings: ["Uniswap fetch failed entirely"] };
+  const { forward, reverse, large, approval } = uniswap;
+  warnings.push(...uniswap.warnings);
+
+  // ── Extract analytics results ──
   const onChainAnalytics =
     analyticsResult.status === "fulfilled"
       ? analyticsResult.value
@@ -295,26 +335,8 @@ async function main(): Promise<void> {
           poolLiquidity: null, poolVolume24h: null, poolPriceUsd: null,
           poolFeeApyEstimate: null, poolPriceChange24h: null, poolPairAddress: null,
         };
-
-  // Log partial failures as warnings
-  if (!forward)
-    warnings.push(
-      `Forward quote failed: ${(forwardResult as PromiseRejectedResult).reason?.message}`
-    );
-  if (!reverse)
-    warnings.push(
-      `Reverse quote failed: ${(reverseResult as PromiseRejectedResult).reason?.message}`
-    );
-  if (!large)
-    warnings.push(
-      `Large quote failed: ${(largeResult as PromiseRejectedResult).reason?.message}`
-    );
-  if (!approval)
-    warnings.push(
-      `Approval check failed: ${(approvalResult as PromiseRejectedResult).reason?.message}`
-    );
   if (analyticsResult.status === "rejected")
-    warnings.push(`DexScreener analytics failed: ${analyticsResult.reason?.message}`);
+    warnings.push(`On-chain analytics failed: ${analyticsResult.reason?.message}`);
 
   // Forward quote is the minimum required
   if (!forward) {

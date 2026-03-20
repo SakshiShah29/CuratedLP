@@ -16,4 +16,4 @@ docs/
 
 # Node modules
 node_modules/.env
-.synthesis-creds.json
+*.json
