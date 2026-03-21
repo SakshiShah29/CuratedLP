@@ -172,8 +172,17 @@ npx tsx ../src/tools/filecoin-store.ts --log '{
   "heartbeatNumber": <cycle number>,
   "poolState": <pool-reader output>,
   "uniswapData": <uniswap-data output or null>,
-  "sentiment": <eigencompute sentiment or null>,
-  "recommendation": <eigencompute recommendation or null>,
+  "sentiment": <eigencompute sentiment object or null>,
+  "recommendation": {
+    "newTickLower": <from eigencompute>,
+    "newTickUpper": <from eigencompute>,
+    "newFee": <from eigencompute>,
+    "confidence": <from eigencompute>,
+    "reasoning": "<FULL reasoning string from eigencompute — do NOT summarize or omit>",
+    "dataSources": <from eigencompute>,
+    "missingData": <from eigencompute>,
+    "model": "<from eigencompute>"
+  },
   "eigencompute": {
     "attestationHash": "<from eigencompute>",
     "computeJobId": "<from eigencompute>",
@@ -184,6 +193,9 @@ npx tsx ../src/tools/filecoin-store.ts --log '{
   "claimTxHash": "<claim tx hash or null>",
   "gasUsed": <total gas used or null>
 }'
+
+**IMPORTANT:** Copy ALL fields from eigencompute output into the recommendation object —
+especially `reasoning`, `dataSources`, `missingData`, and `model`. Do NOT omit or summarize them.
 ```
 
 This uploads the log to Filecoin via Filecoin Pin (with PDP proofs) and records
