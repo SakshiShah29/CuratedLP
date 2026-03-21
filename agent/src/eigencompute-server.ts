@@ -219,7 +219,7 @@ async function callVenice(
       ? { type: "function" as const, function: { name: forceTool } }
       : undefined,
     temperature: 0.7,
-    max_tokens: 2048,
+    max_tokens: 4096,
     // @ts-expect-error — venice_parameters is a Venice API extension
     venice_parameters: veniceParams,
   });
@@ -450,17 +450,20 @@ async function runInference(input: InferenceInput): Promise<InferenceOutput> {
     );
   }
 
-  // Validate
-  const newTickLower = Number(args.newTickLower);
-  const newTickUpper = Number(args.newTickUpper);
+  // Validate and snap ticks to nearest valid tick spacing
+  const snapTick = (tick: number) => Math.round(tick / TICK_SPACING) * TICK_SPACING;
+  const rawTickLower = Number(args.newTickLower);
+  const rawTickUpper = Number(args.newTickUpper);
+  const newTickLower = isNaN(rawTickLower) ? rawTickLower : snapTick(rawTickLower);
+  const newTickUpper = isNaN(rawTickUpper) ? rawTickUpper : snapTick(rawTickUpper);
   const newFee = Number(args.newFee);
   const confidence = Number(args.confidence);
 
   const errors: string[] = [];
-  if (isNaN(newTickLower) || newTickLower % TICK_SPACING !== 0)
-    errors.push(`newTickLower must be divisible by ${TICK_SPACING}`);
-  if (isNaN(newTickUpper) || newTickUpper % TICK_SPACING !== 0)
-    errors.push(`newTickUpper must be divisible by ${TICK_SPACING}`);
+  if (isNaN(newTickLower))
+    errors.push(`newTickLower is not a number`);
+  if (isNaN(newTickUpper))
+    errors.push(`newTickUpper is not a number`);
   if (newTickUpper <= newTickLower)
     errors.push(`newTickUpper must be > newTickLower`);
   if (isNaN(newFee) || newFee < MIN_FEE || newFee > MAX_FEE)
