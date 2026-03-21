@@ -62,7 +62,7 @@ export default function VaultPage() {
         <TokensSection
           shareBalance={user.shareBalance}
           totalSupply={user.totalSupply}
-          totalAssets={vault.totalAssets}
+          totalAssets={metrics.managedAssets}
           token0Balance={user.token0Balance}
           token1Balance={user.token1Balance}
           token0Symbol={user.token0Symbol}
@@ -83,7 +83,7 @@ export default function VaultPage() {
 
       {/* Deposit & Withdraw */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
-        <DepositForm
+        <div id="deposit"><DepositForm
           token0Address={token0Address}
           token1Address={token1Address}
           token0Symbol={user.token0Symbol}
@@ -99,16 +99,18 @@ export default function VaultPage() {
           isConnected={user.isConnected}
           onSuccess={handleTxSuccess}
           refetchAllowances={user.refetch}
-        />
-        <WithdrawForm
+        /></div>
+        <div id="withdraw"><WithdrawForm
           shareBalance={user.shareBalance}
           totalSupply={user.totalSupply}
-          totalAssets={vault.totalAssets}
+          totalAssets={metrics.managedAssets}
           token0Symbol={user.token0Symbol}
           token1Symbol={user.token1Symbol}
+          token0Decimals={user.token0Decimals}
+          token1Decimals={user.token1Decimals}
           isConnected={user.isConnected}
           onSuccess={handleTxSuccess}
-        />
+        /></div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">

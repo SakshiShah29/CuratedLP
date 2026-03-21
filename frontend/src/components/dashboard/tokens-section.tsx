@@ -53,39 +53,27 @@ export function TokensSection({
 
   const positionTokens = [
     {
-      icon: "◇",
       amount: formatTokenAmount(estimatedToken0, token0Decimals ?? 18),
       symbol: token0Symbol ?? "Token0",
       subtitle: `${ownershipPct.toFixed(2)}% of vault`,
-      iconBg: "bg-[#627eea]/20",
-      iconColor: "text-[#627eea]",
     },
     {
-      icon: "$",
-      amount: formatTokenAmount(estimatedToken1, token1Decimals ?? 6),
+      amount: formatTokenAmount(estimatedToken1, token1Decimals ?? 18),
       symbol: token1Symbol ?? "Token1",
       subtitle: `${formatTokenAmount(shareBalance)} cvLP shares`,
-      iconBg: "bg-[#2775ca]/20",
-      iconColor: "text-[#2775ca]",
     },
   ]
 
   const walletTokens = [
     {
-      icon: "◇",
       amount: formatTokenAmount(token0Balance, token0Decimals ?? 18),
       symbol: token0Symbol ?? "Token0",
       subtitle: "Available to deposit",
-      iconBg: "bg-[#627eea]/20",
-      iconColor: "text-[#627eea]",
     },
     {
-      icon: "$",
-      amount: formatTokenAmount(token1Balance, token1Decimals ?? 6),
+      amount: formatTokenAmount(token1Balance, token1Decimals ?? 18),
       symbol: token1Symbol ?? "Token1",
       subtitle: "Available to deposit",
-      iconBg: "bg-[#2775ca]/20",
-      iconColor: "text-[#2775ca]",
     },
   ]
 
@@ -155,10 +143,10 @@ export function TokensSection({
               </Link>
             ) : (
               <Link
-                href="/dashboard/vault#deposit"
-                className="px-6 py-2 bg-[#0a0a0a] border border-[#333] rounded-lg text-white text-sm hover:bg-[#1a1a1a] transition-colors"
+                href="/dashboard/vault#withdraw"
+                className="px-6 py-2 bg-[#0a0a0a] border border-[#4ade80]/20 rounded-lg text-[#4ade80] text-sm hover:bg-[#4ade80]/5 transition-colors"
               >
-                Manage
+                Withdraw
               </Link>
             )}
           </div>
