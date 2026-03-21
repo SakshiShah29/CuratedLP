@@ -1,7 +1,7 @@
 "use client"
 
 import { ExternalLink, MoreHorizontal } from "lucide-react"
-import { BASESCAN_URL } from "@/lib/constants"
+import { BLOCKSCOUT_URL } from "@/lib/constants"
 import { shortenAddress } from "@/lib/format"
 import type { RebalancedEvent } from "@/hooks/use-vault-events"
 
@@ -55,7 +55,7 @@ export function RebalanceHistory({ rebalances, isLoading }: RebalanceHistoryProp
                   </td>
                   <td className="py-3 px-2">
                     <a
-                      href={`${BASESCAN_URL}/tx/${event.transactionHash}`}
+                      href={`${BLOCKSCOUT_URL}/tx/${event.transactionHash}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-[#4ade80] text-sm font-mono flex items-center gap-1 hover:underline"

@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { MoreHorizontal, ChevronDown, ChevronUp, ExternalLink } from "lucide-react"
-import { BASESCAN_URL } from "@/lib/constants"
+import { BLOCKSCOUT_URL } from "@/lib/constants"
 import type { RebalancedEvent } from "@/hooks/use-vault-events"
 
 interface ActivityLogProps {
@@ -105,7 +105,7 @@ export function ActivityLog({ rebalances, isLoading }: ActivityLogProps) {
 
                     <div className="mt-4 pt-3 border-t border-[#2a2a2a]">
                       <a
-                        href={`${BASESCAN_URL}/tx/${event.transactionHash}`}
+                        href={`${BLOCKSCOUT_URL}/tx/${event.transactionHash}`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="inline-flex items-center gap-2 px-4 py-2 bg-[#0a0a0a] border border-[#333] rounded-lg text-[#4ade80] text-sm hover:bg-[#1a1a1a] transition-colors"

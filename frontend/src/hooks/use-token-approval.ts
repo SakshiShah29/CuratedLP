@@ -1,8 +1,10 @@
 "use client";
 
+import { useEffect } from "react";
 import { useWriteContract, useWaitForTransactionReceipt } from "wagmi";
 import { erc20Abi } from "@/lib/abi/erc20";
 import { maxUint256 } from "viem";
+import { useBlockscoutToast } from "./use-blockscout-toast";
 
 export function useTokenApproval() {
   const {
@@ -14,6 +16,12 @@ export function useTokenApproval() {
 
   const { isLoading: isConfirming, isSuccess } =
     useWaitForTransactionReceipt({ hash });
+
+  const { showTxToast } = useBlockscoutToast();
+
+  useEffect(() => {
+    if (hash) showTxToast(hash);
+  }, [hash]);
 
   const approve = (tokenAddress: `0x${string}`, spender: `0x${string}`) => {
     writeContract({

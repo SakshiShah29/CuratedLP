@@ -1,6 +1,10 @@
 "use client";
 
+import { ExternalLink } from "lucide-react";
+import { useAccount } from "wagmi";
+import { useTransactionPopup } from "@blockscout/app-sdk";
 import { shortenAddress, formatTokenAmount } from "@/lib/format";
+import { BASE_SEPOLIA_CHAIN_ID } from "@/lib/constants";
 import type { DepositedEvent, WithdrawnEvent } from "@/hooks/use-vault-events";
 
 interface TransactionHistoryProps {
@@ -28,6 +32,16 @@ export function TransactionHistory({
   token1Symbol = "Token1",
   isLoading,
 }: TransactionHistoryProps) {
+  const { address } = useAccount();
+  const { openPopup } = useTransactionPopup();
+
+  const handleViewAll = () => {
+    openPopup({
+      chainId: String(BASE_SEPOLIA_CHAIN_ID),
+      address: address,
+    });
+  };
+
   const rows: TxRow[] = [
     ...deposits.map((d) => ({
       type: "Deposit" as const,
@@ -59,7 +73,18 @@ export function TransactionHistory({
           "radial-gradient(ellipse at 50% 100%, rgba(74, 222, 128, 0.08) 0%, transparent 50%), #141414",
       }}
     >
-      <h3 className="text-white text-lg font-semibold mb-5">Transaction History</h3>
+      <div className="flex items-center justify-between mb-5">
+        <h3 className="text-white text-lg font-semibold">Transaction History</h3>
+        {address && (
+          <button
+            onClick={handleViewAll}
+            className="inline-flex items-center gap-1.5 text-[#4ade80] text-xs hover:underline transition-colors"
+          >
+            View All
+            <ExternalLink className="w-3 h-3" />
+          </button>
+        )}
+      </div>
 
       {isLoading ? (
         <p className="text-[#666] text-sm text-center py-8">Loading transactions...</p>
@@ -111,7 +136,7 @@ export function TransactionHistory({
                   </td>
                   <td className="py-3 text-right">
                     <a
-                      href={`https://sepolia.basescan.org/tx/${row.txHash}`}
+                      href={`https://base-sepolia.blockscout.com/tx/${row.txHash}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-[#4ade80] hover:underline text-xs font-mono"

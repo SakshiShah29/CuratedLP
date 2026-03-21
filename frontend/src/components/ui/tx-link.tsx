@@ -1,7 +1,7 @@
 "use client";
 
 import { ExternalLink } from "lucide-react";
-import { BASESCAN_URL } from "@/lib/constants";
+import { BLOCKSCOUT_URL } from "@/lib/constants";
 import { shortenAddress } from "@/lib/format";
 
 interface TxLinkProps {
@@ -11,7 +11,7 @@ interface TxLinkProps {
 export function TxLink({ hash }: TxLinkProps) {
   return (
     <a
-      href={`${BASESCAN_URL}/tx/${hash}`}
+      href={`${BLOCKSCOUT_URL}/tx/${hash}`}
       target="_blank"
       rel="noopener noreferrer"
       className="inline-flex items-center gap-1 font-mono text-sm text-accent-blue hover:underline"

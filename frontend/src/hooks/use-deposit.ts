@@ -1,9 +1,11 @@
 "use client";
 
+import { useEffect } from "react";
 import { useWriteContract, useWaitForTransactionReceipt } from "wagmi";
 import { curatedVaultHookAbi } from "@/lib/abi/curated-vault-hook";
 import { HOOK_ADDRESS } from "@/lib/constants";
 import { parseUnits } from "viem";
+import { useBlockscoutToast } from "./use-blockscout-toast";
 
 export function useDeposit() {
   const {
@@ -16,6 +18,12 @@ export function useDeposit() {
 
   const { isLoading: isConfirming, isSuccess } =
     useWaitForTransactionReceipt({ hash });
+
+  const { showTxToast } = useBlockscoutToast();
+
+  useEffect(() => {
+    if (hash) showTxToast(hash);
+  }, [hash]);
 
   const deposit = (
     amount0: string,
