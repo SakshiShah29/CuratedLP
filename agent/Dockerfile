@@ -27,6 +27,9 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 
+# Copy Caddyfile for EigenCompute TLS (used by layered TEE build)
+COPY Caddyfile ./Caddyfile
+
 # Copy TypeScript config and source
 COPY tsconfig.json ./
 COPY src/eigencompute-server.ts ./src/
