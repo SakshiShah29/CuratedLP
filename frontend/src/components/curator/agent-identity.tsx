@@ -3,18 +3,21 @@
 import { MoreHorizontal, Copy, ExternalLink, CheckCircle } from "lucide-react"
 import { useState } from "react"
 import { shortenAddress } from "@/lib/format"
-import { BASESCAN_URL, IDENTITY_REGISTRY } from "@/lib/constants"
+import { BASESCAN_URL, IDENTITY_REGISTRY, IPFS_GATEWAYS } from "@/lib/constants"
 import { useBasename } from "@/hooks/use-basename"
 import type { CuratorData } from "@/hooks/use-curator-data"
+import type { AgentCard } from "@/hooks/use-agent-metadata"
 
 interface AgentIdentityProps {
   curator?: CuratorData
   currentBlock?: bigint
   isLoading: boolean
   rebalanceCount?: number
+  agentCard?: AgentCard
+  tokenUri?: string
 }
 
-export function AgentIdentity({ curator, currentBlock, isLoading, rebalanceCount = 0 }: AgentIdentityProps) {
+export function AgentIdentity({ curator, currentBlock, isLoading, rebalanceCount = 0, agentCard, tokenUri }: AgentIdentityProps) {
   const [copied, setCopied] = useState(false)
   const [activeTab, setActiveTab] = useState("Identity")
   const { basename } = useBasename(curator?.wallet)
@@ -59,6 +62,28 @@ export function AgentIdentity({ curator, currentBlock, isLoading, rebalanceCount
       value: curator?.performanceFeeBps ? `${Number(curator.performanceFeeBps) / 100}%` : "—",
       active: true,
     },
+    {
+      label: "Token URI",
+      value: tokenUri
+        ? tokenUri.startsWith("ipfs://")
+          ? `ipfs://${tokenUri.slice(7, 19)}...`
+          : tokenUri.slice(0, 24) + "..."
+        : "Not registered",
+      ipfsLink: tokenUri
+        ? tokenUri.startsWith("ipfs://")
+          ? `${IPFS_GATEWAYS[0]}${tokenUri.slice(7)}`
+          : tokenUri
+        : undefined,
+    },
+    ...(agentCard
+      ? [
+          {
+            label: "Agent Name",
+            value: agentCard.name,
+            active: true,
+          },
+        ]
+      : []),
   ]
 
   return (
@@ -136,6 +161,16 @@ export function AgentIdentity({ curator, currentBlock, isLoading, rebalanceCount
                 {item.link && (
                   <a
                     href={`${BASESCAN_URL}/address/${IDENTITY_REGISTRY}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="p-2 bg-[#0a0a0a] border border-[#333] rounded-lg hover:bg-[#1a1a1a] transition-colors"
+                  >
+                    <ExternalLink className="w-4 h-4 text-[#888]" />
+                  </a>
+                )}
+                {"ipfsLink" in item && item.ipfsLink && (
+                  <a
+                    href={item.ipfsLink}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="p-2 bg-[#0a0a0a] border border-[#333] rounded-lg hover:bg-[#1a1a1a] transition-colors"

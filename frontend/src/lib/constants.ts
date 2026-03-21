@@ -9,3 +9,14 @@ export const BLOCKSCOUT_URL = "https://base-sepolia.blockscout.com";
 // Basenames (Base-native ENS) on Base Sepolia
 export const BASENAMES_L2_RESOLVER = "0x6533C94869D28fAA8dF77cc63f9e2b2D6Cf77eBA" as const;
 export const BASENAMES_REVERSE_REGISTRAR = "0x876eF94ce0773052a2f81921E70FF25a5e76841f" as const;
+
+// Filecoin (FEVM) — LogRegistry for execution log CID index
+export const FILECOIN_CALIBRATION_CHAIN_ID = 314159;
+export const FILECOIN_RPC = "https://api.calibration.node.glif.io/rpc/v1";
+export const LOG_REGISTRY_ADDRESS = "0x7570588628Cb304D8ba3CB6156F466E44fB91636" as const;
+export const AGENT_ID = 2200n;
+export const IPFS_GATEWAYS = [
+  "https://ipfs.io/ipfs/",
+  "https://cloudflare-ipfs.com/ipfs/",
+  "https://gateway.pinata.cloud/ipfs/",
+];
