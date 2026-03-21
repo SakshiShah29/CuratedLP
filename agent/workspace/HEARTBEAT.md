@@ -7,7 +7,8 @@ that may reveal conditions invisible from pool state alone.**
 
 **TIMEOUTS: eigencompute calls the EigenCompute TEE which runs two Venice API calls (sentiment
 + analysis) — this needs 90-120 seconds total. Use timeout: 120 for eigencompute. Use timeout: 60
-for uniswap-data. Use timeout: 30 for all others. eigencompute prints keepalive pings every 15s —
+for uniswap-data. Use timeout: 300 for filecoin-store (uploads to Filecoin + records on-chain — can take up to 3 min).
+Use timeout: 30 for all others. eigencompute prints keepalive pings every 15s —
 if you see keepalive output, the process IS working. Do NOT kill it while pings are appearing.
 Wait the full 120s timeout. Only kill if 120s has truly elapsed with no output at all.**
 
@@ -188,6 +189,10 @@ npx tsx ../src/tools/filecoin-store.ts --log '{
 This uploads the log to Filecoin via Filecoin Pin (with PDP proofs) and records
 the CID in LogRegistry on Filecoin. Returns JSON with `cid`, `datasetId`, and
 `registryTxHash`.
+
+**IMPORTANT: Use timeout: 300 for filecoin-store.** The filecoin-pin CLI uploads to
+Filecoin with PDP proofs, then records the CID on-chain — this takes 60-180 seconds.
+Do NOT use timeout: 30 (it will always time out). Let it run for the full 300s (5 min).
 
 **This step is non-critical.** If filecoin-store fails, log the error but do NOT
 abort the heartbeat or retry. The agent's primary job (rebalancing) is already done.
