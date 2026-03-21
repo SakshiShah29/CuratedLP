@@ -5,10 +5,11 @@ description: >
   liquidity on Base Sepolia. Reads pool state, gathers structured market
   data via Uniswap Trading API + DeFiLlama + DexScreener, analyzes via
   Venice AI (sentiment + analysis) running inside EigenCompute TEE for
-  verifiable inference, and executes rebalances via MetaMask delegation
-  framework.
-  Phase 4 — Venice AI + EigenCompute + Uniswap Trading API + DeFiLlama integrated.
-version: 0.5.0
+  verifiable inference, executes rebalances via MetaMask delegation
+  framework, and stores execution logs on Filecoin with cryptographic
+  PDP proofs via Filecoin Pin for an immutable audit trail.
+  Phase 5 — Filecoin agentic storage + ERC-8004 identity integrated.
+version: 0.6.0
 metadata:
   openclaw:
     requires:
@@ -53,11 +54,12 @@ on-chain pool state and delegation execution. All data sources are free.
 3. **DECIDE** — Apply CLAIM rule first, then REBALANCE rule, then DO NOTHING.
 4. **ACT** — Invoke at most one rebalance + one claim per heartbeat.
 5. **REFLECT** — Write a 3-4 line summary of what you saw and did.
-6. **DONE** — Stop. Wait for next heartbeat.
+6. **STORE** — Store execution log on Filecoin via filecoin-store (non-critical — don't abort on failure).
+7. **DONE** — Stop. Wait for next heartbeat.
 
 ## Available Tools
 
-You have 6 tools. Invoke them via exec. Each outputs JSON to stdout.
+You have 7 tools. Invoke them via exec. Each outputs JSON to stdout.
 
 ---
 
@@ -234,6 +236,50 @@ Requires `idleToken0 >= accruedPerformanceFee` — if not, rebalance first.
 
 ---
 
+### filecoin-store (STORE phase — Filecoin audit trail)
+
+Stores the heartbeat execution log on Filecoin via Filecoin Pin CLI
+(IPFS + cryptographic PDP proofs) and records the CID in LogRegistry
+on Filecoin. Creates an immutable audit trail linked to the agent's
+ERC-8004 identity (agent ID 2200).
+
+```
+Invocation: npx tsx ../src/tools/filecoin-store.ts --log '<ExecutionLog JSON>'
+Arguments:
+  --log      JSON string containing the full execution log for this heartbeat
+```
+
+The ExecutionLog JSON must include:
+- `agentId`: "2200" (ERC-8004 token ID)
+- `timestamp`: ISO 8601 timestamp
+- `heartbeatNumber`: cycle number
+- `poolState`: pool-reader output
+- `uniswapData`: uniswap-data output (or null if unavailable)
+- `sentiment`: eigencompute sentiment (or null)
+- `recommendation`: eigencompute recommendation (or null)
+- `eigencompute`: { attestationHash, computeJobId, verifiable }
+- `decision`: "rebalance" | "claim_fees" | "rebalance+claim" | "skip"
+- `rebalanceTxHash`: rebalance tx hash (or null)
+- `claimTxHash`: claim tx hash (or null)
+- `gasUsed`: total gas used (or null)
+
+Output fields:
+- `success` — boolean
+- `cid` — IPFS CID for the stored log (retrievable via any IPFS gateway)
+- `datasetId` — Filecoin Pin dataset ID (for PDP proof verification)
+- `registryTxHash` — LogRegistry on-chain recording tx hash
+- `registryError` — if on-chain recording failed (non-fatal)
+
+You can also retrieve a stored log:
+```
+npx tsx ../src/tools/filecoin-store.ts --retrieve <CID>
+```
+
+**This tool is non-critical.** If it fails, log the error and continue.
+Never abort a heartbeat because of a filecoin-store failure.
+
+---
+
 ## Hard Constraints (never violate)
 
 - Ticks must be divisible by 60 (the pool's tick spacing)
@@ -304,4 +350,6 @@ data-supported reason to act.
 | execute-rebalance returns "RebalanceTooFrequent" | Skip silently. Try next heartbeat. |
 | execute-rebalance returns success=false (other) | Log revert reason. Do NOT retry. |
 | claim-fees returns success=false | Log error. Skip. Not critical. Try next heartbeat. |
+| filecoin-store fails (upload) | Log error. Non-critical — heartbeat is already complete. |
+| filecoin-store fails (on-chain) | CID was stored on IPFS but LogRegistry recording failed. Log and continue. |
 | Any unexpected error | Log it and stop. Next heartbeat re-reads state fresh. |

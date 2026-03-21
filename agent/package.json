@@ -11,7 +11,8 @@
     "claim-fees": "npx tsx src/tools/claim-fees.ts",
     "rebalance": "npx tsx src/tools/execute-rebalance.ts",
     "eigencompute": "npx tsx src/tools/eigencompute.ts",
-    "eigencompute-server": "npx tsx src/eigencompute-server.ts"
+    "eigencompute-server": "npx tsx src/eigencompute-server.ts",
+    "filecoin-store": "npx tsx src/tools/filecoin-store.ts"
   },
   "keywords": [],
   "author": "",

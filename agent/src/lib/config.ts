@@ -85,6 +85,15 @@ export const EIGENCOMPUTE_ENABLED  = EIGENCOMPUTE_MODE !== "off";
 /** URL of the deployed EigenCompute TEE service. */
 export const EIGENCOMPUTE_ENDPOINT = optional("EIGENCOMPUTE_ENDPOINT");
 
+// ─── Phase 5 — Filecoin (filecoin-store.ts) ──────────────────────────────────
+
+/** LogRegistry contract on Filecoin mainnet (chain 314). */
+export const LOG_REGISTRY_ADDRESS  = optional("LOG_REGISTRY_ADDRESS");
+/** ERC-8004 agent token ID on Base Sepolia IdentityRegistry. */
+export const ERC8004_AGENT_ID      = optional("ERC8004_AGENT_ID");
+/** Use --mainnet flag for filecoin-pin CLI. Default: true. */
+export const FILECOIN_MAINNET      = optional("FILECOIN_MAINNET", "true") === "true";
+
 // ─── Directory paths ─────────────────────────────────────────────────────────
 
 const __dirname = dirname(fileURLToPath(import.meta.url));

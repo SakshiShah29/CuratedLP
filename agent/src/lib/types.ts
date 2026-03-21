@@ -163,6 +163,35 @@ export interface EigenComputeResult extends RebalanceRecommendation {
   verifiable: boolean;
 }
 
+// ─── Filecoin Execution Log (from filecoin-store.ts) ─────────────────────────
+
+export interface ExecutionLog {
+  agentId: string;
+  timestamp: string;
+  heartbeatNumber: number;
+  poolState: PoolState;
+  uniswapData?: UniswapData;
+  sentiment?: SentimentResult;
+  recommendation?: RebalanceRecommendation;
+  eigencompute?: {
+    attestationHash: string;
+    computeJobId: string;
+    verifiable: boolean;
+  };
+  decision: "rebalance" | "claim_fees" | "rebalance+claim" | "skip";
+  rebalanceTxHash?: string;
+  claimTxHash?: string;
+  gasUsed?: number;
+}
+
+export interface FilecoinStoreResult {
+  success: boolean;
+  cid?: string;
+  datasetId?: string;
+  size?: number;
+  error?: string;
+}
+
 // ─── Cycle Log (written by agent each heartbeat) ────────────────────────────
 
 export interface CycleLog {

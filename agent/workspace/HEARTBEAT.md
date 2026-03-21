@@ -25,6 +25,9 @@ Wait the full 120s timeout. Only kill if 120s has truly elapsed with no output a
 - rebalance:      npx tsx ../src/tools/execute-rebalance.ts --tickLower <N> --tickUpper <N> --fee <N>
 - claim fees:     npx tsx ../src/tools/claim-fees.ts
 
+### STORE (Filecoin)
+- filecoin-store:  npx tsx ../src/tools/filecoin-store.ts --log '<ExecutionLog JSON>'
+
 ---
 
 ## Step 1 — OBSERVE
@@ -153,3 +156,46 @@ Reply with a 3-4 line summary:
 
 End with HEARTBEAT_OK if no alert needed, or HEARTBEAT_ALERT: <reason> if something is wrong
 (e.g. pool-reader failed, transaction reverted unexpectedly, TEE down).
+
+---
+
+## Step 7 — STORE (Filecoin)
+
+After REFLECT, store the execution log on Filecoin for the immutable audit trail.
+Build a JSON object with all heartbeat data, then call filecoin-store:
+
+```
+npx tsx ../src/tools/filecoin-store.ts --log '{
+  "agentId": "2200",
+  "timestamp": "<ISO 8601 now>",
+  "heartbeatNumber": <cycle number>,
+  "poolState": <pool-reader output>,
+  "uniswapData": <uniswap-data output or null>,
+  "sentiment": <eigencompute sentiment or null>,
+  "recommendation": <eigencompute recommendation or null>,
+  "eigencompute": {
+    "attestationHash": "<from eigencompute>",
+    "computeJobId": "<from eigencompute>",
+    "verifiable": <true/false>
+  },
+  "decision": "<rebalance|claim_fees|rebalance+claim|skip>",
+  "rebalanceTxHash": "<rebalance tx hash or null>",
+  "claimTxHash": "<claim tx hash or null>",
+  "gasUsed": <total gas used or null>
+}'
+```
+
+This uploads the log to Filecoin via Filecoin Pin (with PDP proofs) and records
+the CID in LogRegistry on Filecoin. Returns JSON with `cid`, `datasetId`, and
+`registryTxHash`.
+
+**This step is non-critical.** If filecoin-store fails, log the error but do NOT
+abort the heartbeat or retry. The agent's primary job (rebalancing) is already done.
+
+Include the Filecoin CID in your REFLECT summary if the upload succeeded.
+
+---
+
+## Step 8 — DONE
+
+Stop. Wait for next heartbeat.

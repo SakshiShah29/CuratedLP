@@ -1,0 +1,15 @@
+{
+  "type": "https://eips.ethereum.org/EIPS/eip-8004#registration-v1",
+  "name": "CuratedLP Curator Agent",
+  "description": "AI liquidity curator for Uniswap v4 wstETH/USDC vault. Uses Venice AI for market analysis, EigenCompute TEE for verifiable inference, and Filecoin for persistent execution logs with cryptographic PDP proofs.",
+  "endpoints": [
+    {
+      "name": "agentWallet",
+      "endpoint": "eip155:84532:0x766C538441dEA6EEd24D0914545b037080d6d3a9"
+    }
+  ],
+  "registrations": [],
+  "supportedTrust": [
+    "reputation"
+  ]
+}

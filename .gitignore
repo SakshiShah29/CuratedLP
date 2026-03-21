@@ -17,3 +17,8 @@ docs/
 # Node modules
 node_modules/.env
 *.json
+
+# FEVM foundry kit — exclude heavy lib/ dependencies (restore with: cd fevm && git submodule update --init --recursive)
+fevm/lib/
+fevm/out/
+fevm/cache/

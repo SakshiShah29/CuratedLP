@@ -18,6 +18,11 @@ LPs can independently verify: what data the agent saw, what Venice
 recommended, whether the TEE attestation is valid, and what action
 was taken — all without trusting the agent's local logs.
 
+Unlike generic IPFS pinning (Lighthouse, Pinata), **Filecoin Pin** provides
+**cryptographic PDP (Provable Data Possession) proofs** — daily on-chain
+verification that the data is actually stored. This is the difference
+between "trust a service provider" and "verify on-chain."
+
 This addresses Filecoin RFS-2:
 > "Deploy AI agents as first-class onchain citizens via ERC-8004,
 > with persistent state and execution logs on Filecoin."
@@ -27,144 +32,166 @@ This addresses Filecoin RFS-2:
 ## Architecture
 
 ```
-  Agent heartbeat (REFLECT phase)
-       |
-       | Serialize execution log to JSON
-       v
-  Two storage paths (both required for strong submission):
-       |
-       +--→ Path A: Lighthouse SDK → IPFS + Filecoin storage deal
-       |     Returns: CID (content identifier)
-       |     Fast retrieval via IPFS gateway
-       |     Filecoin deal ensures persistence
-       |
-       +--→ Path B: FEVM smart contract on Filecoin mainnet
-             LogRegistry.sol records:
-               - ERC-8004 agent ID
-               - CID from Path A
-               - Block timestamp
-             Creates on-chain index of all execution logs
-       |
-       v
-  Anyone can: query LogRegistry → get CIDs → fetch logs from IPFS/Filecoin
+  ONE-TIME SETUP:
+  ───────────────
+  1. Create agent card JSON (ERC-8004 spec)
+  2. filecoin-pin add --mainnet agent-card.json → CID + Dataset ID
+  3. cast send IdentityRegistry.register("ipfs://<CID>/agent-card.json")
+     on Base Sepolia → ERC-8004 NFT minted (agent ID)
+     Registry: 0x8004A818BFB912233c491871b3d84c89A494BD9e
+
+  EVERY HEARTBEAT (REFLECT phase):
+  ─────────────────────────────────
+  1. Serialize execution log to JSON
+  2. filecoin-pin add --mainnet execution-log.json → CID + Dataset ID
+     (PDP proofs begin within 24h — cryptographic proof of storage)
+  3. LogRegistry.recordLog(agentId, cid, heartbeat, decision)
+     on Filecoin mainnet (FEVM, chain 314) — on-chain CID index
+
+  VERIFICATION (anyone):
+  ──────────────────────
+  1. Query LogRegistry on Filecoin → get CIDs for agent
+  2. Fetch execution log from IPFS gateway → verify contents
+  3. filecoin-pin data-set show <ID> --mainnet → verify PDP proofs
+  4. Cross-reference agent ID → ERC-8004 IdentityRegistry on Base
 ```
 
 ---
 
-## Path A: Lighthouse SDK — Data Upload
+## Storage Layer: Filecoin Pin
 
-Lighthouse abstracts Filecoin deal-making into simple API calls. Data
-is stored on IPFS (hot, fast retrieval) with Filecoin backing (persistent
-storage deals).
+Filecoin Pin is the official Filecoin storage tool with cryptographic proof
+guarantees. It replaces Lighthouse in our architecture.
+
+| Feature | Lighthouse | Filecoin Pin |
+|---|---|---|
+| Storage proof | None (trust provider) | **Cryptographic PDP proofs** (daily) |
+| Payment | Free tier / API key | **USDFC on-chain payments** |
+| Mainnet | Yes but opaque | **Yes, `--mainnet` flag** |
+| IPFS compatible | Yes | Yes |
+| Bounty alignment | Weak | **Strong** (real Filecoin deals + proofs) |
 
 ### Setup
 
 ```bash
-npm install @lighthouse-web3/sdk
+npm install -g filecoin-pin@latest
 ```
-
-Get an API key from https://files.lighthouse.storage/
 
 ### Environment Variables
 
 ```bash
-LIGHTHOUSE_API_KEY=your_api_key_here
+# Same private key works on both Filecoin and Base (EVM-compatible)
+FILECOIN_PRIVATE_KEY=0x...
 ```
 
-### Implementation: filecoin-store.ts
+### One-Time Payment Setup
 
-```typescript
-import lighthouse from "@lighthouse-web3/sdk";
-import { LIGHTHOUSE_API_KEY } from "../lib/config.js";
-import { log } from "../lib/logger.js";
+```bash
+export PRIVATE_KEY=$FILECOIN_PRIVATE_KEY
 
-export interface ExecutionLog {
-  agentId: string;           // ERC-8004 token ID
-  timestamp: string;         // ISO 8601
-  heartbeatNumber: number;
-  poolState: object;         // from pool-reader
-  uniswapData: object;       // from uniswap-data (includes DeFiLlama)
-  sentiment: object;         // from Venice Call #1
-  recommendation: object;    // from Venice Call #2
-  eigencompute: {
-    attestationHash: string;
-    computeJobId: string;
-    verifiable: boolean;
-  };
-  decision: "rebalance" | "claim_fees" | "skip";
-  txHash?: string;           // if acted
-  gasUsed?: number;
-}
+# Testnet (Calibration)
+filecoin-pin payments setup --auto
 
-export interface FilecoinStoreResult {
-  success: boolean;
-  cid?: string;              // IPFS CID for retrieval
-  size?: number;             // bytes stored
-  error?: string;
-}
-
-/**
- * Store execution log on Filecoin via Lighthouse.
- * Returns the CID for retrieval and on-chain indexing.
- */
-export async function storeExecutionLog(
-  executionLog: ExecutionLog
-): Promise<FilecoinStoreResult> {
-  try {
-    const jsonString = JSON.stringify(executionLog, null, 2);
-    const fileName = `curatedlp-log-${executionLog.heartbeatNumber}-${Date.now()}.json`;
-
-    // Upload text/JSON to Lighthouse → IPFS + Filecoin
-    const response = await lighthouse.uploadText(
-      jsonString,
-      LIGHTHOUSE_API_KEY,
-      fileName
-    );
-
-    const cid = response.data.Hash;
-    const size = response.data.Size;
-
-    log("info", `filecoin-store: uploaded log #${executionLog.heartbeatNumber}`, {
-      cid,
-      size,
-      fileName,
-    });
-
-    return { success: true, cid, size: parseInt(size) };
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    log("error", "filecoin-store: upload failed", { error: msg });
-    return { success: false, error: msg };
-  }
-}
-
-/**
- * Retrieve an execution log from Filecoin/IPFS by CID.
- */
-export async function retrieveExecutionLog(cid: string): Promise<ExecutionLog | null> {
-  try {
-    const response = await fetch(`https://gateway.lighthouse.storage/ipfs/${cid}`);
-    if (!response.ok) return null;
-    return (await response.json()) as ExecutionLog;
-  } catch {
-    return null;
-  }
-}
+# Mainnet
+filecoin-pin payments setup --auto --mainnet
 ```
+
+Requires tFIL + USDFC (testnet) or FIL + USDFC (mainnet).
+
+### Upload Execution Log
+
+```bash
+# Write execution log to temp file, upload to Filecoin
+filecoin-pin add --auto-fund --mainnet execution-log.json
+```
+
+Returns: Root CID, Dataset ID, Piece CID, Provider info.
+
+### Verify PDP Proofs
+
+```bash
+filecoin-pin data-set show <DATASET_ID> --mainnet
+```
+
+Shows: status (live), provider, PDP rail, piece CIDs, proof schedule.
 
 ### Retrieval
 
-Stored logs are accessible via:
-- **Lighthouse gateway:** `https://gateway.lighthouse.storage/ipfs/<CID>`
-- **IPFS gateway:** `https://ipfs.io/ipfs/<CID>`
-- **Direct IPFS:** `ipfs cat <CID>`
+Stored logs are accessible via any IPFS gateway:
+- `https://ipfs.io/ipfs/<CID>/execution-log.json`
+- `https://gateway.pinata.cloud/ipfs/<CID>/execution-log.json`
+- `https://cloudflare-ipfs.com/ipfs/<CID>/execution-log.json`
+- Direct from storage provider URL (returned by filecoin-pin)
 
 ---
 
-## Path B: FEVM Smart Contract — On-Chain Log Index
+## ERC-8004 Agent Registration with Filecoin Pin
 
-A simple Solidity contract deployed on **Filecoin mainnet** (chain ID 314)
-that records CIDs linked to the agent's ERC-8004 identity.
+The agent's identity card is stored on Filecoin with PDP proofs, then
+registered on-chain as an ERC-8004 NFT. This follows the official
+[Filecoin Pin for ERC-8004 tutorial](https://docs.filecoin.io/builder-cookbook/filecoin-pin/erc-8004).
+
+### ERC-8004 Identity Registry Address
+
+| Network | Address |
+|---|---|
+| Base Sepolia | `0x8004A818BFB912233c491871b3d84c89A494BD9e` |
+
+### Agent Card JSON
+
+```json
+{
+  "type": "https://eips.ethereum.org/EIPS/eip-8004#registration-v1",
+  "name": "CuratedLP Curator Agent",
+  "description": "AI liquidity curator for Uniswap v4 wstETH/USDC vault. Uses Venice AI for market analysis, EigenCompute TEE for verifiable inference, and Filecoin for persistent execution logs.",
+  "image": "https://example.com/curatedlp-agent.png",
+  "endpoints": [
+    {
+      "name": "agentWallet",
+      "endpoint": "eip155:84532:<AGENT_SMART_ACCOUNT_ADDRESS>"
+    }
+  ],
+  "registrations": [],
+  "supportedTrust": ["reputation"]
+}
+```
+
+### Registration Flow
+
+```bash
+# 1. Upload agent card to Filecoin (mainnet for persistent storage)
+filecoin-pin add --auto-fund --mainnet agent-card.json
+# → Root CID: bafybeiabc123...
+
+# 2. Register on ERC-8004 Identity Registry (Base Sepolia)
+export TOKEN_URI="ipfs://<ROOT_CID>/agent-card.json"
+export IDENTITY_REGISTRY="0x8004A818BFB912233c491871b3d84c89A494BD9e"
+
+cast send $IDENTITY_REGISTRY \
+  "register(string)" \
+  "$TOKEN_URI" \
+  --rpc-url https://sepolia.base.org \
+  --private-key $FILECOIN_PRIVATE_KEY
+
+# 3. Extract agent ID from tx receipt
+AGENT_ID=$(cast receipt $TX_HASH --rpc-url https://sepolia.base.org --json \
+  | jq -r '.logs[] | select(.topics[0] == "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef") | .topics[3]' \
+  | head -1 \
+  | xargs cast --to-dec)
+echo "Agent ID: $AGENT_ID"
+```
+
+---
+
+## On-Chain Log Index: LogRegistry.sol (FEVM)
+
+A Solidity contract deployed on **Filecoin mainnet** (chain ID 314) that
+records CIDs linked to the agent's ERC-8004 identity. Provides an on-chain
+index so anyone can discover all execution logs for a given agent.
+
+Deployed using the [fevm-foundry-kit](https://github.com/filecoin-project/fevm-foundry-kit)
+in the `fevm/` directory (separate Foundry environment — FEVM does not
+support Cancun opcodes).
 
 ### LogRegistry.sol
 
@@ -172,26 +199,17 @@ that records CIDs linked to the agent's ERC-8004 identity.
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-/**
- * @title LogRegistry
- * @notice On-chain index of CuratedLP agent execution logs stored on Filecoin/IPFS.
- *         Each entry links an ERC-8004 agent ID to a Filecoin CID.
- */
 contract LogRegistry {
     struct LogEntry {
-        string cid;           // IPFS/Filecoin CID
-        uint256 timestamp;    // block.timestamp when recorded
-        uint256 heartbeat;    // heartbeat number
-        string decision;      // "rebalance", "claim_fees", "skip"
+        string cid;
+        uint256 timestamp;
+        uint256 heartbeat;
+        string decision;
     }
 
-    /// @notice agentId => array of log entries
     mapping(uint256 => LogEntry[]) public logs;
-
-    /// @notice agentId => total log count
     mapping(uint256 => uint256) public logCount;
 
-    /// @notice Emitted when a new execution log is recorded
     event LogRecorded(
         uint256 indexed agentId,
         uint256 indexed heartbeat,
@@ -200,13 +218,6 @@ contract LogRegistry {
         uint256 timestamp
     );
 
-    /**
-     * @notice Record an execution log CID for an agent.
-     * @param agentId   ERC-8004 agent token ID
-     * @param cid       IPFS/Filecoin CID of the execution log JSON
-     * @param heartbeat Heartbeat cycle number
-     * @param decision  Decision taken: "rebalance", "claim_fees", or "skip"
-     */
     function recordLog(
         uint256 agentId,
         string calldata cid,
@@ -220,15 +231,9 @@ contract LogRegistry {
             decision: decision
         }));
         logCount[agentId]++;
-
         emit LogRecorded(agentId, heartbeat, cid, decision, block.timestamp);
     }
 
-    /**
-     * @notice Get a specific log entry for an agent.
-     * @param agentId ERC-8004 agent token ID
-     * @param index   Log index (0-based)
-     */
     function getLog(uint256 agentId, uint256 index)
         external view returns (LogEntry memory)
     {
@@ -236,17 +241,11 @@ contract LogRegistry {
         return logs[agentId][index];
     }
 
-    /**
-     * @notice Get the latest N log entries for an agent.
-     * @param agentId ERC-8004 agent token ID
-     * @param count   Number of entries to return
-     */
     function getLatestLogs(uint256 agentId, uint256 count)
         external view returns (LogEntry[] memory)
     {
         uint256 total = logs[agentId].length;
         if (count > total) count = total;
-
         LogEntry[] memory result = new LogEntry[](count);
         for (uint256 i = 0; i < count; i++) {
             result[i] = logs[agentId][total - count + i];
@@ -256,64 +255,32 @@ contract LogRegistry {
 }
 ```
 
-### Deployment — Filecoin Mainnet
+### Deployment
 
-**Hardhat config:**
-
-```typescript
-// hardhat.config.ts
-const config: HardhatUserConfig = {
-  solidity: "0.8.20",
-  networks: {
-    filecoinMainnet: {
-      url: "https://api.node.glif.io/rpc/v1",
-      chainId: 314,
-      accounts: [process.env.FILECOIN_PRIVATE_KEY!],
-    },
-    filecoinCalibration: {
-      url: "https://api.calibration.node.glif.io/rpc/v1",
-      chainId: 314159,
-      accounts: [process.env.FILECOIN_PRIVATE_KEY!],
-    },
-  },
-};
-```
-
-**Deploy script:**
-
-```typescript
-import { ethers } from "hardhat";
-
-async function main() {
-  const LogRegistry = await ethers.getContractFactory("LogRegistry");
-  const registry = await LogRegistry.deploy();
-  await registry.waitForDeployment();
-  console.log("LogRegistry deployed to:", await registry.getAddress());
-}
-
-main().catch(console.error);
-```
-
-**Deploy to calibration testnet first, then mainnet:**
+Uses the `fevm/` Foundry project (cloned from fevm-foundry-kit):
 
 ```bash
-# Get tFIL from faucet
-# https://faucet.calibnet.chainsafe-fil.io
+# Calibration testnet
+cd fevm && forge create \
+  --rpc-url https://api.calibration.node.glif.io/rpc/v1 \
+  --private-key $FILECOIN_PRIVATE_KEY \
+  --broadcast \
+  src/LogRegistry.sol:LogRegistry
 
-# Deploy to calibration
-npx hardhat run scripts/deploy-log-registry.ts --network filecoinCalibration
-
-# Deploy to mainnet (requires real FIL for gas)
-npx hardhat run scripts/deploy-log-registry.ts --network filecoinMainnet
+# Mainnet
+cd fevm && forge create \
+  --rpc-url https://api.node.glif.io/rpc/v1 \
+  --private-key $FILECOIN_PRIVATE_KEY \
+  --broadcast \
+  src/LogRegistry.sol:LogRegistry
 ```
 
 ### Recording Logs On-Chain (TypeScript)
 
 ```typescript
-import { createPublicClient, createWalletClient, http } from "viem";
+import { createWalletClient, http } from "viem";
 import { filecoin } from "viem/chains";
 import { privateKeyToAccount } from "viem/accounts";
-import { LOG_REGISTRY_ADDRESS, FILECOIN_PRIVATE_KEY } from "../lib/config.js";
 
 const logRegistryAbi = [
   {
@@ -378,8 +345,10 @@ const executionLog: ExecutionLog = {
   gasUsed: gasUsed,
 };
 
-// 2. Store on Filecoin via Lighthouse
-const { cid } = await storeExecutionLog(executionLog);
+// 2. Write to temp file and upload via Filecoin Pin CLI
+const { cid, datasetId } = await storeExecutionLog(executionLog);
+// Internally: writes JSON → shells out to `filecoin-pin add --mainnet`
+// PDP proofs begin within 24h — cryptographic proof of storage
 
 // 3. Record CID on-chain in LogRegistry (Filecoin mainnet)
 if (cid) {
@@ -389,7 +358,7 @@ if (cid) {
     currentHeartbeat,
     agentDecision
   );
-  log("info", `filecoin: log recorded on-chain`, { cid, txHash });
+  log("info", `filecoin: log recorded on-chain`, { cid, datasetId, txHash });
 }
 ```
 
@@ -412,7 +381,7 @@ const logs = await publicClient.readContract({
 // For each log entry, fetch the full JSON from IPFS
 for (const entry of logs) {
   const response = await fetch(
-    `https://gateway.lighthouse.storage/ipfs/${entry.cid}`
+    `https://ipfs.io/ipfs/${entry.cid}`
   );
   const fullLog = await response.json();
   // Display: timestamp, decision, Venice reasoning, attestation hash
@@ -425,10 +394,38 @@ for (const entry of logs) {
 
 | Item | Cost | Notes |
 |---|---|---|
-| Lighthouse upload (1-5 KB JSON) | Free tier: 1GB | More than enough for hackathon |
+| Filecoin Pin upload (1-5 KB JSON) | ~0.07 USDFC per upload | ~372 GiB per 1 USDFC/month |
+| Filecoin Pin payment setup | 1 USDFC deposit | One-time |
 | LogRegistry deployment (Filecoin mainnet) | ~0.1-0.5 FIL gas | One-time |
 | recordLog tx (per heartbeat) | ~0.001-0.01 FIL | Small calldata |
-| Calibration testnet | Free (tFIL from faucet) | For testing |
+| ERC-8004 registration (Base Sepolia) | ~0.001 Sepolia ETH | One-time (free testnet) |
+
+---
+
+## Tokens Required
+
+### Filecoin (Calibration testnet)
+
+| Token | Purpose | Source |
+|---|---|---|
+| tFIL | Gas fees + LogRegistry deployment | [Chainsafe faucet](https://faucet.calibnet.chainsafe-fil.io) |
+| USDFC (test) | Filecoin Pin storage payments | [USDFC faucet](https://forest-explorer.chainsafe.dev/faucet/calibnet_usdfc) |
+
+### Filecoin (Mainnet)
+
+| Token | Purpose | Source |
+|---|---|---|
+| FIL | Gas fees + LogRegistry deployment | Exchange or [USDFC Bridge](https://app.usdfc.net/#/bridge) |
+| USDFC | Filecoin Pin storage payments | [Sushi swap](https://www.sushi.com/filecoin/swap) or [USDFC Bridge](https://app.usdfc.net/#/bridge) |
+
+### Base Sepolia
+
+| Token | Purpose | Source |
+|---|---|---|
+| Sepolia ETH | ERC-8004 registration gas | [Alchemy faucet](https://www.alchemy.com/faucets/base-sepolia) |
+
+**Note:** The same Ethereum wallet (private key) works on both Filecoin
+and Base Sepolia — you only need one key.
 
 ---
 
@@ -436,41 +433,47 @@ for (const entry of logs) {
 
 | Resource | URL |
 |---|---|
-| Calibration faucet (Chainsafe) | https://faucet.calibnet.chainsafe-fil.io |
-| Calibration faucet (Zondax) | https://beryx.zondax.ch/faucet/ |
-| Calibration faucet (Forest) | https://forest-explorer.chainsafe.dev/faucet/calibnet |
+| Calibration faucet — tFIL (Chainsafe) | https://faucet.calibnet.chainsafe-fil.io |
+| Calibration faucet — USDFC | https://forest-explorer.chainsafe.dev/faucet/calibnet_usdfc |
+| USDFC mainnet (mint/bridge) | https://app.usdfc.net/#/bridge |
 | Calibration explorer | https://calibration.filscan.io/ |
 | Mainnet explorer | https://filscan.io/ |
+| Base Sepolia explorer | https://sepolia.basescan.org/ |
+| ERC-8004 registry (Base Sepolia) | https://sepolia.basescan.org/address/0x8004A818BFB912233c491871b3d84c89A494BD9e |
+| Base Sepolia faucet | https://www.alchemy.com/faucets/base-sepolia |
 
 ---
 
 ## Environment Variables
 
 ```bash
-# Filecoin
-LIGHTHOUSE_API_KEY=           # From https://files.lighthouse.storage/
-FILECOIN_PRIVATE_KEY=0x...    # For deploying LogRegistry + recording logs
-LOG_REGISTRY_ADDRESS=0x...    # After deployment
+# Filecoin + Base (same key works on both chains)
+FILECOIN_PRIVATE_KEY=0x...    # For Filecoin Pin, LogRegistry, and ERC-8004 registration
+LOG_REGISTRY_ADDRESS=0x...    # After deploying LogRegistry on Filecoin mainnet
+ERC8004_AGENT_ID=             # After registering on ERC-8004 Identity Registry
 
 # Existing (unchanged)
 VENICE_API_KEY=
 UNISWAP_API_KEY=
-EIGENCOMPUTE_APP_ID=
+EIGENCOMPUTE_ENDPOINT=
 ```
 
 ---
 
 ## Verification Checklist
 
-- [ ] Lighthouse SDK installed and API key configured
+- [ ] `filecoin-pin` CLI installed and payment setup complete
+- [ ] Agent card JSON created and uploaded to Filecoin Pin
+- [ ] Agent registered on ERC-8004 Identity Registry (Base)
 - [ ] LogRegistry.sol deployed to Filecoin Calibration testnet
 - [ ] LogRegistry.sol deployed to Filecoin mainnet
 - [ ] Run 3+ heartbeat cycles
-- [ ] Each heartbeat produces a Lighthouse CID
+- [ ] Each heartbeat produces a Filecoin Pin CID with Dataset ID
 - [ ] Each CID is recorded in LogRegistry on-chain
 - [ ] Retrieve stored logs via IPFS gateway — verify JSON matches
+- [ ] `filecoin-pin data-set show` confirms PDP proof status
 - [ ] Query LogRegistry from frontend — display decision history
-- [ ] Demo: show ERC-8004 agent ID → LogRegistry → CIDs → full execution logs
+- [ ] Demo: ERC-8004 agent → Filecoin Pin upload → PDP proof → LogRegistry → IPFS retrieval
 
 ---
 
@@ -478,9 +481,20 @@ EIGENCOMPUTE_APP_ID=
 
 | Requirement | How We Satisfy |
 |---|---|
-| Working code with real storage | Lighthouse uploads real JSON, LogRegistry deployed on Filecoin mainnet |
-| Real payments and usage | FIL gas for on-chain log recording, Lighthouse storage deals |
-| FOC mainnet deployment | LogRegistry.sol deployed on Filecoin mainnet (chain ID 314) |
-| RFS-2 compliance | ERC-8004 agent identity + execution logs on Filecoin |
-| 2-minute demo | Show heartbeat → Lighthouse upload → on-chain CID recording → IPFS retrieval |
-| Why Filecoin is essential | Immutable audit trail for AI agent decisions — LPs verify without trusting the agent |
+| Working code with real storage | Filecoin Pin uploads real JSON with PDP proofs, LogRegistry on Filecoin mainnet |
+| Real payments and usage | USDFC for Filecoin Pin storage, FIL for LogRegistry gas, ETH for ERC-8004 registration |
+| FOC mainnet deployment | LogRegistry.sol on Filecoin mainnet (chain 314) + Filecoin Pin `--mainnet` |
+| RFS-2 compliance | ERC-8004 agent identity (Base Sepolia) + agent card on Filecoin Pin (mainnet) + execution logs on Filecoin with PDP proofs |
+| 2-minute demo | Register agent → heartbeat → Filecoin Pin upload → LogRegistry record → verify PDP proof → IPFS retrieval |
+| Why Filecoin is essential | PDP proofs = cryptographic guarantee agent decisions are permanently stored. LPs verify without trusting anyone — not the agent, not a service provider. |
+
+---
+
+## References
+
+- [Filecoin Pin CLI tutorial](https://docs.filecoin.io/builder-cookbook/filecoin-pin/filecoin-pin-cli)
+- [Filecoin Pin for ERC-8004 tutorial](https://docs.filecoin.io/builder-cookbook/filecoin-pin/erc-8004)
+- [FilOzone/FilecoinPin-for-ERC8004 repo](https://github.com/FilOzone/FilecoinPin-for-ERC8004)
+- [ERC-8004 specification](https://eips.ethereum.org/EIPS/eip-8004)
+- [fevm-foundry-kit](https://github.com/filecoin-project/fevm-foundry-kit)
+- [FEVM Foundry docs](https://docs.filecoin.io/smart-contracts/developing-contracts/foundry)
