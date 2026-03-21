@@ -4,17 +4,20 @@ import { MoreHorizontal, Copy, ExternalLink, CheckCircle } from "lucide-react"
 import { useState } from "react"
 import { shortenAddress } from "@/lib/format"
 import { BASESCAN_URL, IDENTITY_REGISTRY } from "@/lib/constants"
+import { useBasename } from "@/hooks/use-basename"
 import type { CuratorData } from "@/hooks/use-curator-data"
 
 interface AgentIdentityProps {
   curator?: CuratorData
   currentBlock?: bigint
   isLoading: boolean
+  rebalanceCount?: number
 }
 
-export function AgentIdentity({ curator, currentBlock, isLoading }: AgentIdentityProps) {
+export function AgentIdentity({ curator, currentBlock, isLoading, rebalanceCount = 0 }: AgentIdentityProps) {
   const [copied, setCopied] = useState(false)
   const [activeTab, setActiveTab] = useState("Identity")
+  const { basename } = useBasename(curator?.wallet)
   const tabs = ["Identity", "Delegation", "History"]
 
   const copyAddress = () => {
@@ -37,6 +40,11 @@ export function AgentIdentity({ curator, currentBlock, isLoading }: AgentIdentit
       copyable: true,
     },
     {
+      label: "Basename",
+      value: basename ?? "Not set",
+      active: !!basename,
+    },
+    {
       label: "ERC-8004 ID",
       value: curator?.erc8004IdentityId ? `#${curator.erc8004IdentityId.toString()}` : "—",
       link: true,
@@ -48,7 +56,7 @@ export function AgentIdentity({ curator, currentBlock, isLoading }: AgentIdentit
     },
     {
       label: "Performance Fee",
-      value: curator?.performanceFeeBps ? `${curator.performanceFeeBps / 100}%` : "—",
+      value: curator?.performanceFeeBps ? `${Number(curator.performanceFeeBps) / 100}%` : "—",
       active: true,
     },
   ]
@@ -71,7 +79,7 @@ export function AgentIdentity({ curator, currentBlock, isLoading }: AgentIdentit
           <div>
             <h2 className="text-white text-lg font-semibold">Curator Agent</h2>
             <p className="text-[#4ade80] text-sm font-mono">
-              {curator?.wallet ? shortenAddress(curator.wallet) : "—"}
+              {basename ?? (curator?.wallet ? shortenAddress(curator.wallet) : "—")}
             </p>
           </div>
         </div>
@@ -147,7 +155,7 @@ export function AgentIdentity({ curator, currentBlock, isLoading }: AgentIdentit
               <div>
                 <p className="text-[#666] text-xs mb-1">Total rebalances</p>
                 <p className="text-white font-mono text-sm">
-                  {isLoading ? "..." : curator?.rebalanceCount?.toString() ?? "0"}
+                  {isLoading ? "..." : rebalanceCount}
                 </p>
               </div>
               <div>
@@ -185,7 +193,7 @@ export function AgentIdentity({ curator, currentBlock, isLoading }: AgentIdentit
             <div className="flex items-center justify-between">
               <span className="text-[#666] text-sm">Rebalance count</span>
               <span className="text-white font-mono text-sm">
-                {curator?.rebalanceCount?.toString() ?? "0"}
+                {rebalanceCount}
               </span>
             </div>
             <div className="flex items-center justify-between">
@@ -197,7 +205,7 @@ export function AgentIdentity({ curator, currentBlock, isLoading }: AgentIdentit
             <div className="flex items-center justify-between">
               <span className="text-[#666] text-sm">Performance fee</span>
               <span className="text-[#4ade80] font-mono text-sm">
-                {curator?.performanceFeeBps ? `${curator.performanceFeeBps / 100}%` : "—"}
+                {curator?.performanceFeeBps ? `${Number(curator.performanceFeeBps) / 100}%` : "—"}
               </span>
             </div>
           </div>

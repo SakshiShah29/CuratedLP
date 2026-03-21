@@ -11,7 +11,7 @@
  * Logs also go to stderr so OpenClaw gateway captures them.
  */
 
-import { appendFileSync, mkdirSync } from "fs";
+import { appendFileSync, readFileSync, writeFileSync, mkdirSync } from "fs";
 import { join } from "path";
 import { DATA_DIR } from "./config.js";
 
@@ -24,6 +24,10 @@ try {
 
 const CYCLE_LOG   = join(DATA_DIR, "cycle.log");
 const PAYMENT_LOG = join(DATA_DIR, "payment-log.jsonl");
+
+/** Structured cycle log for the frontend (JSON array format) */
+const CYCLE_LOG_JSON = process.env.CYCLE_LOG_JSON_PATH
+  ?? join(DATA_DIR, "../../frontend/public/cycle-log.json");
 
 export type LogLevel = "debug" | "info" | "warn" | "error";
 
@@ -50,6 +54,47 @@ export function log(
   } catch {
     // non-fatal — disk write failure shouldn't crash the tool
   }
+}
+
+// ─── Structured cycle log (frontend-compatible) ─────────────────────────────
+
+export interface CycleLogEntry {
+  timestamp: string;
+  action: "REBALANCED" | "SKIPPED" | "CLAIMED" | "ERROR";
+  summary: string;
+  venice?: { reasoning: string; confidence: number; model: string };
+  rebalance?: {
+    oldTickLower: number; oldTickUpper: number;
+    newTickLower: number; newTickUpper: number;
+    oldFee: number; newFee: number;
+  };
+  attestation?: string;
+  txHash?: string;
+  serviceCounts?: Record<string, number>;
+  error?: string;
+}
+
+/**
+ * Append a structured cycle entry to frontend/public/cycle-log.json.
+ * The frontend's useAgentLogs() hook polls this file every 30s.
+ */
+export function logCycle(entry: CycleLogEntry): void {
+  try {
+    let entries: CycleLogEntry[] = [];
+    try {
+      const raw = readFileSync(CYCLE_LOG_JSON, "utf-8").trim();
+      if (raw.startsWith("[")) entries = JSON.parse(raw);
+    } catch {
+      // file doesn't exist or is malformed — start fresh
+    }
+    entries.push(entry);
+    // Keep last 100 entries
+    if (entries.length > 100) entries = entries.slice(-100);
+    writeFileSync(CYCLE_LOG_JSON, JSON.stringify(entries, null, 2));
+  } catch {
+    // non-fatal
+  }
+  log("info", `cycle: ${entry.action} — ${entry.summary}`);
 }
 
 export type PaymentSource = "olas" | "locus";

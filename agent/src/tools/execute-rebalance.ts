@@ -23,6 +23,7 @@ import {
   type Hex,
   type Address,
 } from "viem";
+import { logCycle } from "../lib/logger.js";
 import { baseSepolia } from "viem/chains";
 import { privateKeyToAccount } from "viem/accounts";
 import {
@@ -153,8 +154,9 @@ async function main() {
 
   const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
 
+  const success = receipt.status === "success";
   console.log(JSON.stringify({
-    success: receipt.status === "success",
+    success,
     txHash,
     blockNumber: Number(receipt.blockNumber),
     gasUsed: receipt.gasUsed.toString(),
@@ -162,12 +164,30 @@ async function main() {
     tickUpper,
     fee,
   }, null, 2));
+
+  logCycle({
+    timestamp: new Date().toISOString(),
+    action: success ? "REBALANCED" : "ERROR",
+    summary: success
+      ? `Rebalanced to [${tickLower}, ${tickUpper}] fee=${fee}`
+      : `Rebalance tx reverted`,
+    rebalance: { oldTickLower: 0, oldTickUpper: 0, newTickLower: tickLower, newTickUpper: tickUpper, oldFee: 0, newFee: fee },
+    txHash,
+    serviceCounts: { venice: 1, eigenCompute: 1 },
+  });
 }
 
 main().catch((err) => {
+  const msg = err.message ?? String(err);
   console.error(JSON.stringify({
     success: false,
-    error: err.message ?? String(err),
+    error: msg,
   }));
+  logCycle({
+    timestamp: new Date().toISOString(),
+    action: "ERROR",
+    summary: `Rebalance failed: ${msg.slice(0, 120)}`,
+    error: msg.slice(0, 200),
+  });
   process.exit(1);
 });

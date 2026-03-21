@@ -31,7 +31,8 @@ contract DeployScript is Script {
             Hooks.BEFORE_ADD_LIQUIDITY_FLAG |
             Hooks.BEFORE_REMOVE_LIQUIDITY_FLAG |
             Hooks.BEFORE_SWAP_FLAG |
-            Hooks.AFTER_SWAP_FLAG
+            Hooks.AFTER_SWAP_FLAG |
+            Hooks.AFTER_SWAP_RETURNS_DELTA_FLAG
         );
 
         bytes memory creationCode = type(CuratedVaultHook).creationCode;
@@ -97,5 +98,9 @@ contract DeployScript is Script {
         console.log("Initial deposit complete, shares:", shares);
 
         vm.stopBroadcast();
+
+        console.log("");
+        console.log("=== NEXT: Deploy enforcer separately ===");
+        console.log("Run: forge script script/DeployEnforcer.s.sol --rpc-url $BASE_SEPOLIA_RPC --broadcast --private-key $PRIVATE_KEY");
     }
 }

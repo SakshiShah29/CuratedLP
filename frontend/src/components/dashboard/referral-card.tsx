@@ -4,6 +4,7 @@ import { Bot, Copy, ExternalLink, Shield } from "lucide-react"
 import { useState } from "react"
 import { shortenAddress } from "@/lib/format"
 import { BASESCAN_URL, IDENTITY_REGISTRY } from "@/lib/constants"
+import { useBasename } from "@/hooks/use-basename"
 import type { CuratorData } from "@/hooks/use-curator-data"
 
 interface ReferralCardProps {
@@ -13,6 +14,7 @@ interface ReferralCardProps {
 
 export function ReferralCard({ curator, isLoading }: ReferralCardProps) {
   const [copied, setCopied] = useState(false)
+  const { basename } = useBasename(curator?.wallet)
   const agentAddress = curator?.wallet ? shortenAddress(curator.wallet) : "—"
 
   const handleCopy = () => {
@@ -43,6 +45,7 @@ export function ReferralCard({ curator, isLoading }: ReferralCardProps) {
             </div>
             <div>
               <p className="text-white text-sm font-medium">Curator AI</p>
+              {basename && <p className="text-[#4ade80] text-xs font-mono">{basename}</p>}
               <p className={`text-xs font-mono ${curator?.active ? "text-[#4ade80]" : "text-[#888]"}`}>
                 {isLoading ? "..." : curator?.active ? "Online" : "Offline"}
               </p>
@@ -71,7 +74,7 @@ export function ReferralCard({ curator, isLoading }: ReferralCardProps) {
               <Copy className="w-3 h-3" />
             </button>
           </div>
-          <p className="text-white text-sm font-mono">{copied ? "Copied!" : agentAddress}</p>
+          <p className="text-white text-sm font-mono">{copied ? "Copied!" : basename ?? agentAddress}</p>
         </div>
 
         {/* ERC-8004 Identity */}

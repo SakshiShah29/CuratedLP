@@ -29,8 +29,7 @@ export default function PerformancePage() {
   return (
     <div className="space-y-6">
       <APYComparison
-        cumulativeFeeRevenue={vault.cumulativeFeeRevenue}
-        totalAssets={vault.totalAssets}
+        annualizedFeeYield={metrics.annualizedFeeYield}
         isLoading={vault.isLoading}
       />
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -41,6 +40,7 @@ export default function PerformancePage() {
           curator={curator}
           cumulativeFeeRevenue={vault.cumulativeFeeRevenue}
           totalSwaps={vault.totalSwaps}
+          rebalanceCount={rebalances.length}
         />
       </div>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

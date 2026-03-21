@@ -22,13 +22,14 @@ export default function CuratorPage() {
         curator={curator}
         currentBlock={blockNumber}
         isLoading={curatorLoading || vault.isLoading}
+        rebalanceCount={rebalances.length}
       />
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2">
           <ActivityLog rebalances={rebalances} isLoading={eventsLoading} />
         </div>
         <OperationalStats
-          rebalanceCount={curator?.rebalanceCount}
+          rebalanceCount={rebalances.length}
           accruedFee0={vault.accruedPerformanceFee0}
           accruedFee1={vault.accruedPerformanceFee1}
           totalSwaps={vault.totalSwaps}

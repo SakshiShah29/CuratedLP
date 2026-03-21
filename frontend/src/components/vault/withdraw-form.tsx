@@ -7,6 +7,7 @@ import { TxLink } from "@/components/ui/tx-link";
 import { useWithdraw } from "@/hooks/use-withdraw";
 import { formatTokenAmount } from "@/lib/format";
 import { Loader2, ArrowUpFromLine } from "lucide-react";
+import { TokenIcon } from "@/components/ui/token-icon";
 
 interface WithdrawFormProps {
   shareBalance?: bigint;
@@ -74,9 +75,16 @@ export function WithdrawForm({
 
         {estimatedToken0 !== undefined && estimatedToken1 !== undefined && (
           <div className="text-sm text-text-secondary p-3 rounded-xl bg-black/20 border border-white/5">
-            You will receive: ~{formatTokenAmount(estimatedToken0, 18)}{" "}
-            {token0Symbol} + ~{formatTokenAmount(estimatedToken1, 6)}{" "}
-            {token1Symbol}
+            You will receive:
+            <span className="inline-flex items-center gap-1 mx-1">
+              <TokenIcon symbol={token0Symbol} size={14} />
+              ~{formatTokenAmount(estimatedToken0, 18)} {token0Symbol}
+            </span>
+            +
+            <span className="inline-flex items-center gap-1 mx-1">
+              <TokenIcon symbol={token1Symbol} size={14} />
+              ~{formatTokenAmount(estimatedToken1, 6)} {token1Symbol}
+            </span>
           </div>
         )}
 

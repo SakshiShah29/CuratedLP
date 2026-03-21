@@ -30,21 +30,19 @@ export function useDeposit() {
     amount1: string,
     decimals0: number,
     decimals1: number,
-    slippage: number = 0.01 // 1%
   ) => {
     const amount0Desired = parseUnits(amount0, decimals0);
     const amount1Desired = parseUnits(amount1, decimals1);
-    const amount0Min =
-      (amount0Desired * BigInt(Math.floor((1 - slippage) * 10000))) / 10000n;
-    const amount1Min =
-      (amount1Desired * BigInt(Math.floor((1 - slippage) * 10000))) / 10000n;
     const deadline = BigInt(Math.floor(Date.now() / 1000) + 600);
 
+    // Per-token min amounts set to 0: concentrated liquidity uses tokens at
+    // whatever ratio the current price dictates, and unused tokens are refunded.
+    // Protection against bad deposits comes from the minShares parameter instead.
     writeContract({
       address: HOOK_ADDRESS,
       abi: curatedVaultHookAbi,
       functionName: "deposit",
-      args: [amount0Desired, amount1Desired, amount0Min, amount1Min, 0n, deadline],
+      args: [amount0Desired, amount1Desired, 0n, 0n, 0n, deadline],
     });
   };
 

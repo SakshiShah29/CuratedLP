@@ -85,11 +85,11 @@ If eigencompute fails entirely, fall back to the simple heuristic in RULE 2 (Ste
 Apply these rules IN ORDER using all available data:
 
 ### RULE 1 — CLAIM RULE
-If `accruedPerformanceFee > 0`, you MUST claim. Any non-zero value = claim.
+If `accruedPerformanceFee0 > 0` OR `accruedPerformanceFee1 > 0`, you MUST claim. Any non-zero value = claim.
 
-IMPORTANT: idleToken0 must be >= accruedPerformanceFee for claim to succeed.
-- If idleToken0 >= accruedPerformanceFee → run claim-fees directly
-- If idleToken0 < accruedPerformanceFee (e.g. idleToken0 == 0) → REBALANCE FIRST
+IMPORTANT: idleToken0 must be >= accruedPerformanceFee0 for claim to succeed.
+- If idleToken0 >= accruedPerformanceFee0 → run claim-fees directly
+- If idleToken0 < accruedPerformanceFee0 (e.g. idleToken0 == 0) → REBALANCE FIRST
   (same or tighter range) to collect LP fees, THEN claim-fees.
   If rebalance fails with "RebalanceTooFrequent", skip this heartbeat — try next time.
 
@@ -118,7 +118,7 @@ Constraint: Cannot rebalance more than once per 30 blocks. If "RebalanceTooFrequ
 
 ### RULE 3 — DO NOTHING
 Only if:
-- accruedPerformanceFee == 0
+- accruedPerformanceFee0 == 0 AND accruedPerformanceFee1 == 0
 - eigencompute confidence is below 0.6 (or unavailable and Phase 3 heuristic shows no issue)
 - Position appears healthy (in-range, not full-range)
 - No strong signal to change range or fee
@@ -131,9 +131,9 @@ Doing nothing is valid and often the right call.
 
 Choose ONE outcome:
 - A) Do nothing — fees zero AND position healthy AND no strong signal
-- B) Claim fees only — accruedPerformanceFee > 0 AND idleToken0 sufficient
+- B) Claim fees only — accruedPerformanceFee0 or accruedPerformanceFee1 > 0 AND idleToken0 sufficient
 - C) Rebalance only — range/fee adjustment needed, no fees to claim
-- D) Rebalance then claim — accruedPerformanceFee > 0 AND idleToken0 < accruedFee
+- D) Rebalance then claim — accruedPerformanceFee0 > 0 AND idleToken0 < accruedFee0
 - E) Claim then rebalance — fees claimable AND range needs fixing (idleToken0 sufficient)
 
 ---

@@ -3,6 +3,7 @@
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { formatTokenAmount } from "@/lib/format";
+import { TokenIcon } from "@/components/ui/token-icon";
 
 interface TokenInputProps {
   symbol: string;
@@ -31,7 +32,10 @@ export function TokenInput({
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between text-xs px-1">
-        <span className="text-text-primary/70 font-medium">{symbol}</span>
+        <span className="text-text-primary/70 font-medium flex items-center gap-1.5">
+          <TokenIcon symbol={symbol} size={16} />
+          {symbol}
+        </span>
         <span className="text-text-secondary">
           Balance:{" "}
           <span className="font-mono text-text-primary/70">
