@@ -16,9 +16,28 @@
  */
 
 import { execSync } from "child_process";
-import { writeFileSync, mkdtempSync, rmSync } from "fs";
+import { writeFileSync, mkdtempSync, rmSync, existsSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
+
+// Resolve filecoin-pin binary and ensure node is in PATH for non-interactive shells.
+// filecoin-pin uses #!/usr/bin/env node, so node must be findable via PATH.
+function resolveFilecoinPin(): { bin: string; nodeBinDir: string } {
+  // The node bin directory where filecoin-pin is installed (same dir as current node)
+  const nodeBinDir = join(process.execPath, "..");
+  const nvmCandidate = join(nodeBinDir, "filecoin-pin");
+
+  if (existsSync(nvmCandidate)) {
+    return { bin: nvmCandidate, nodeBinDir };
+  }
+
+  // Fallback: check other common locations
+  for (const p of ["/usr/local/bin/filecoin-pin"]) {
+    if (existsSync(p)) return { bin: p, nodeBinDir };
+  }
+
+  return { bin: "filecoin-pin", nodeBinDir };
+}
 import { createWalletClient, http } from "viem";
 import { filecoin } from "viem/chains";
 import { privateKeyToAccount } from "viem/accounts";
@@ -66,9 +85,21 @@ export async function storeExecutionLog(
     const jsonString = JSON.stringify(executionLog, null, 2);
     writeFileSync(filePath, jsonString);
 
-    // Build filecoin-pin command
+    // Build filecoin-pin command — use node explicitly to avoid #!/usr/bin/env node PATH issues
+    const { bin: filecoinPinBin, nodeBinDir } = resolveFilecoinPin();
+    const nodeExec = process.execPath; // absolute path to node binary
     const mainnetFlag = FILECOIN_MAINNET ? " --mainnet" : "";
-    const cmd = `filecoin-pin add --auto-fund${mainnetFlag} ${filePath} 2>&1 || true`;
+    // Run filecoin-pin via node directly: node /path/to/filecoin-pin add ...
+    const cmd = `${nodeExec} ${filecoinPinBin} add --auto-fund${mainnetFlag} ${filePath} 2>&1 || true`;
+
+    // Ensure node's bin dir is in PATH for any child processes filecoin-pin spawns
+    const currentPath = process.env.PATH ?? "";
+    const patchedPath = currentPath.includes(nodeBinDir)
+      ? currentPath
+      : `${nodeBinDir}:${currentPath}`;
+
+    // Print progress to stdout so the calling agent knows the script is alive
+    console.log(JSON.stringify({ status: "uploading", bin: filecoinPinBin, file: fileName }));
 
     // Execute filecoin-pin CLI — PRIVATE_KEY passed via env (not in command string)
     // `|| true` prevents execSync from throwing on exit code 1 (secondary provider warnings)
@@ -76,8 +107,9 @@ export async function storeExecutionLog(
     const output = execSync(cmd, {
       encoding: "utf-8",
       timeout: 300_000, // 5 min timeout for upload + on-chain confirmation
-      env: { ...process.env, PRIVATE_KEY: MOLTBOT_PRIVATE_KEY },
+      env: { ...process.env, PRIVATE_KEY: MOLTBOT_PRIVATE_KEY, PATH: patchedPath },
     });
+    console.log(JSON.stringify({ status: "upload_complete", outputLength: output.length }));
 
     // Parse CID and Dataset ID from CLI output
     const cid = parseCidFromOutput(output);

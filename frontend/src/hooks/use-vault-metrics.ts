@@ -10,9 +10,9 @@ const BLOCKS_PER_DAY = 43_200n;
 const BLOCKS_PER_WEEK = 302_400n;
 const BLOCKS_PER_YEAR = 15_768_000n; // ~365.25 days
 
-// Minimum vault age (in blocks) before annualizing — prevents absurd APYs on new vaults.
-// ~3 days = 129,600 blocks at 2s/block.
-const MIN_ANNUALIZATION_AGE = 129_600;
+// Minimum vault age (in blocks) before annualizing.
+// ~1 hour = 1,800 blocks at 2s/block. Kept low for testnet visibility.
+const MIN_ANNUALIZATION_AGE = 1_800;
 
 interface VaultMetricsInput {
   totalAssets?: [bigint, bigint];
@@ -146,10 +146,16 @@ export function useVaultMetrics({
         ? Number(currentBlock - firstSwapBlock)
         : 0;
 
-      if (vaultAge >= MIN_ANNUALIZATION_AGE && total > 0) {
-        const blocksPerYear = Number(BLOCKS_PER_YEAR);
-        annualizedFeeYield = (feeNum / total) * (blocksPerYear / vaultAge) * 100;
-        annualizedFeeYield = Math.min(annualizedFeeYield, 9999);
+      if (total > 0 && vaultAge > 0) {
+        if (vaultAge >= MIN_ANNUALIZATION_AGE) {
+          const blocksPerYear = Number(BLOCKS_PER_YEAR);
+          annualizedFeeYield = (feeNum / total) * (blocksPerYear / vaultAge) * 100;
+        } else {
+          // Young vault: show simple cumulative yield %
+          annualizedFeeYield = (feeNum / total) * 100;
+        }
+        // Cap at a realistic ceiling
+        annualizedFeeYield = Math.min(annualizedFeeYield, 150);
       }
     }
 

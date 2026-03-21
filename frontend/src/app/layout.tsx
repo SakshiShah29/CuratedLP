@@ -17,6 +17,10 @@ export const metadata: Metadata = {
   title: "CuratedLP — AI-Managed Liquidity",
   description:
     "AI-managed concentrated liquidity vault on Uniswap v4. Deposit passively, let AI optimize.",
+  icons: {
+    icon: "/logo.png",
+    apple: "/logo.png",
+  },
 };
 
 export default function RootLayout({

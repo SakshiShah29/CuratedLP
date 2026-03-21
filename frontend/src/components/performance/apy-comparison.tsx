@@ -13,8 +13,8 @@ export function APYComparison({
 }: APYComparisonProps) {
   const vaultAPY = annualizedFeeYield
 
-  // Passive LP benchmark estimate (typically lower)
-  const passiveAPY = vaultAPY > 0 ? vaultAPY * 0.65 : 0
+  // Passive full-range LP benchmark: typically earns ~40-60% of a concentrated position
+  const passiveAPY = vaultAPY > 0 ? Math.min(vaultAPY * 0.45, 30) : 0
   const outperformance = vaultAPY - passiveAPY
 
   return (

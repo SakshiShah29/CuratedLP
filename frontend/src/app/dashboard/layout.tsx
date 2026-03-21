@@ -19,7 +19,7 @@ export default function DashboardLayout({
       <Sidebar
         rebalanceCount={rebalances.length}
       />
-      <main className="flex-1 p-6 overflow-auto">
+      <main className="flex-1 p-6 overflow-auto max-w-7xl mx-auto">
         <Header />
         <AnimatePresence mode="wait">
           <motion.div

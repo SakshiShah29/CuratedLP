@@ -3,14 +3,13 @@
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { motion } from "framer-motion";
-import { Unbounded } from "next/font/google";
+import { Plus_Jakarta_Sans } from "next/font/google";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { NavBar } from "@/components/ui/tubelight-navbar";
 import { WalletButton } from "@/components/layout/wallet-button";
 import { Github, LayoutDashboard, Home, BookOpen } from "lucide-react";
 
-const heroFont = Unbounded({
+const heroFont = Plus_Jakarta_Sans({
   subsets: ["latin"],
   weight: ["800"],
 });
@@ -29,7 +28,7 @@ export function LandingHero() {
   return (
     <section className="relative h-screen w-full overflow-hidden bg-bg-primary">
       {/* FaultyTerminal fills the entire background */}
-      <div className="absolute inset-0 z-0">
+      <div className="absolute inset-0 z-0 pointer-events-none">
         <FaultyTerminal
           scale={1.5}
           gridMul={[2, 1]}
@@ -52,7 +51,7 @@ export function LandingHero() {
       </div>
 
       {/* Dark overlay for text readability */}
-      <div className="absolute inset-0 z-1 bg-black/25" />
+      <div className="absolute inset-0 z-[1] bg-black/25 pointer-events-none" />
 
       {/* Tubelight navbar */}
       <motion.div
@@ -83,7 +82,7 @@ export function LandingHero() {
       </motion.div>
 
       {/* Content overlay */}
-      <div className="relative z-10 flex flex-col items-center justify-center h-full px-6">
+      <div className="relative z-10 flex flex-col items-center justify-center h-full px-6 pb-24 pt-24">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -106,7 +105,7 @@ export function LandingHero() {
           className="flex items-center justify-center w-full"
         >
           <FuzzyText
-            fontSize={90}
+            fontSize={110}
             fontWeight={800}
             fontFamily={heroFont.style.fontFamily}
             color="#ffffff"
@@ -124,59 +123,53 @@ export function LandingHero() {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 1.2 }}
-          className="mt-12 text-white/40 text-base md:text-lg font-mono tracking-wide"
+          className="mt-12 text-white/70 text-base md:text-lg font-mono tracking-wide"
         >
           Deposit &middot; Let AI optimize &middot; Withdraw anytime
         </motion.p>
 
         {/* CTA buttons */}
         <motion.div
-          className="flex gap-4 mt-10"
+          className="flex gap-5 mt-10"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 1.5 }}
         >
-          <Link href="/dashboard/vault">
-            <Button
-              size="lg"
-              className="bg-accent-green text-black font-mono font-bold hover:bg-accent-green/90 px-10 py-6 text-lg rounded-full shadow-[0_0_30px_rgba(167,239,158,0.25)] hover:shadow-[0_0_50px_rgba(167,239,158,0.4)] transition-all duration-300"
-            >
-              Launch App
-            </Button>
+          <Link
+            href="/dashboard/vault"
+            className="inline-flex items-center justify-center bg-accent-green text-black font-bold hover:bg-accent-green/90 px-10 py-4 text-lg rounded-full shadow-[0_0_40px_rgba(167,239,158,0.35)] hover:shadow-[0_0_60px_rgba(167,239,158,0.5)] transition-all duration-300"
+            style={{ fontFamily: heroFont.style.fontFamily }}
+          >
+            Launch App
           </Link>
           <a
             href="https://github.com/sakshishah/curatedlp"
             target="_blank"
             rel="noopener noreferrer"
+            className="inline-flex items-center justify-center gap-2 border border-accent-green/40 text-accent-green hover:bg-accent-green/10 px-10 py-4 text-lg font-bold rounded-full backdrop-blur-md bg-white/5 transition-all duration-300"
+            style={{ fontFamily: heroFont.style.fontFamily }}
           >
-            <Button
-              size="lg"
-              variant="outline"
-              className="border-accent-green/20 text-accent-green hover:bg-accent-green/5 px-10 py-6 text-lg font-mono rounded-full backdrop-blur-sm transition-all duration-300"
-            >
-              <Github className="h-5 w-5 mr-2" />
-              View Source
-            </Button>
+            <Github className="h-5 w-5" />
+            View Source
           </a>
         </motion.div>
 
         {/* Stats row */}
         <motion.div
-          className="flex gap-8 md:gap-16 mt-16"
+          className="flex gap-12 md:gap-20 mt-16"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 1.8 }}
         >
           {[
             { label: "Protocol", value: "Uniswap v4" },
-            { label: "Network", value: "Base Sepolia" },
             { label: "Strategy", value: "AI Rebalance" },
           ].map((stat) => (
             <div key={stat.label} className="text-center">
-              <p className="text-white/40 text-[10px] font-mono uppercase tracking-[0.2em] mb-1">
+              <p className="text-accent-green/70 text-xs font-mono uppercase tracking-[0.2em] mb-1.5">
                 {stat.label}
               </p>
-              <p className="text-white/80 font-mono font-bold text-base">
+              <p className="text-white font-bold text-lg" style={{ fontFamily: heroFont.style.fontFamily }}>
                 {stat.value}
               </p>
             </div>
@@ -184,8 +177,30 @@ export function LandingHero() {
         </motion.div>
       </div>
 
-      {/* Bottom gradient fade */}
-      <div className="absolute bottom-0 left-0 right-0 h-40 bg-gradient-to-t from-bg-primary via-bg-primary/50 to-transparent z-10" />
+      {/* Footer */}
+      <footer className="absolute bottom-0 left-0 right-0 z-20 border-t border-white/5">
+        <div className="flex items-center justify-between px-8 py-4 backdrop-blur-md bg-black/40">
+          <p className="text-white/30 text-xs font-mono">
+            &copy; 2026 CuratedLP
+          </p>
+          <div className="flex gap-6">
+            <a
+              href="https://github.com/sakshishah/curatedlp"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-white/30 hover:text-accent-green text-xs font-mono transition-colors"
+            >
+              GitHub
+            </a>
+            <Link
+              href="/dashboard"
+              className="text-white/30 hover:text-accent-green text-xs font-mono transition-colors"
+            >
+              Dashboard
+            </Link>
+          </div>
+        </div>
+      </footer>
     </section>
   );
 }

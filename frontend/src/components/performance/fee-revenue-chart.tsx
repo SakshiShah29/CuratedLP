@@ -35,7 +35,7 @@ export function FeeRevenueChart({ swaps, isLoading }: FeeRevenueChartProps) {
     )
 
   return (
-    <div className="bg-[#111111] rounded-2xl border border-[#2a2a2a] p-6">
+    <div className="bg-[#111111] rounded-2xl border border-[#2a2a2a] p-6 lg:h-[320px] flex flex-col">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h3 className="text-white font-medium">Fee Revenue</h3>
@@ -46,7 +46,7 @@ export function FeeRevenueChart({ swaps, isLoading }: FeeRevenueChartProps) {
         </button>
       </div>
 
-      <div className="h-[280px]">
+      <div className="flex-1 min-h-0">
         {isLoading ? (
           <div className="flex items-center justify-center h-full">
             <p className="text-[#666] text-sm animate-pulse">Loading chart data...</p>

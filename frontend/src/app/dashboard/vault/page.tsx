@@ -4,16 +4,11 @@ import { CryptoCards } from "@/components/dashboard/crypto-cards";
 import { TokensSection } from "@/components/dashboard/tokens-section";
 import { TradingActivity } from "@/components/dashboard/trading-activity";
 import { PerformanceChart } from "@/components/dashboard/performance-chart";
-import { ReferralCard } from "@/components/dashboard/referral-card";
 import { ChatWidget } from "@/components/dashboard/chat-widget";
 import { VaultHealthCard } from "@/components/vault/vault-health-card";
 import { VolumeRevenueCard } from "@/components/vault/volume-revenue-card";
-import { DepositForm } from "@/components/vault/deposit-form";
-import { WithdrawForm } from "@/components/vault/withdraw-form";
-import { TransactionHistory } from "@/components/vault/transaction-history";
 import { useVaultData } from "@/hooks/use-vault-data";
 import { useUserPosition } from "@/hooks/use-user-position";
-import { useCuratorData } from "@/hooks/use-curator-data";
 import { useVaultEvents } from "@/hooks/use-vault-events";
 import { useVaultMetrics } from "@/hooks/use-vault-metrics";
 
@@ -22,7 +17,6 @@ export default function VaultPage() {
   const token0Address = vault.tokens?.[0] as `0x${string}` | undefined;
   const token1Address = vault.tokens?.[1] as `0x${string}` | undefined;
   const user = useUserPosition(token0Address, token1Address);
-  const { curator, isLoading: curatorLoading } = useCuratorData(vault.activeCuratorId);
   const { swaps, rebalances, deposits, withdrawals, isLoading: eventsLoading } = useVaultEvents();
 
   const metrics = useVaultMetrics({
@@ -37,11 +31,6 @@ export default function VaultPage() {
     token0Decimals: user.token0Decimals,
     token1Decimals: user.token1Decimals,
   });
-
-  const handleTxSuccess = () => {
-    vault.refetch();
-    user.refetch();
-  };
 
   return (
     <div>
@@ -81,38 +70,6 @@ export default function VaultPage() {
         />
       </div>
 
-      {/* Deposit & Withdraw */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
-        <div id="deposit"><DepositForm
-          token0Address={token0Address}
-          token1Address={token1Address}
-          token0Symbol={user.token0Symbol}
-          token1Symbol={user.token1Symbol}
-          token0Balance={user.token0Balance}
-          token1Balance={user.token1Balance}
-          token0Decimals={user.token0Decimals}
-          token1Decimals={user.token1Decimals}
-          token0Allowance={user.token0Allowance}
-          token1Allowance={user.token1Allowance}
-          totalAssets={vault.totalAssets}
-          totalSupply={vault.totalSupply}
-          isConnected={user.isConnected}
-          onSuccess={handleTxSuccess}
-          refetchAllowances={user.refetch}
-        /></div>
-        <div id="withdraw"><WithdrawForm
-          shareBalance={user.shareBalance}
-          totalSupply={user.totalSupply}
-          totalAssets={metrics.managedAssets}
-          token0Symbol={user.token0Symbol}
-          token1Symbol={user.token1Symbol}
-          token0Decimals={user.token0Decimals}
-          token1Decimals={user.token1Decimals}
-          isConnected={user.isConnected}
-          onSuccess={handleTxSuccess}
-        /></div>
-      </div>
-
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
         <div className="lg:col-span-2">
           <VaultHealthCard
@@ -135,20 +92,8 @@ export default function VaultPage() {
         />
       </div>
 
-      {/* Transaction History */}
-      <div className="mt-6">
-        <TransactionHistory
-          deposits={deposits}
-          withdrawals={withdrawals}
-          token0Symbol={user.token0Symbol}
-          token1Symbol={user.token1Symbol}
-          isLoading={eventsLoading}
-        />
-      </div>
-
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
-        <div className="lg:col-span-2 flex flex-col md:flex-row gap-6">
-          <ReferralCard curator={curator} isLoading={curatorLoading} />
+        <div className="lg:col-span-2">
           <PerformanceChart swaps={swaps} isLoading={eventsLoading} />
         </div>
         <ChatWidget />

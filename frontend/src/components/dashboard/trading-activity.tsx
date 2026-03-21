@@ -37,9 +37,9 @@ export function TradingActivity({
 
     for (const events of allEvents) {
       const row: number[] = []
-      // Split events into 8 time buckets
-      const bucketSize = Math.max(1, Math.ceil(events.length / 8))
-      for (let i = 0; i < 8; i++) {
+      // Split events into 12 time buckets
+      const bucketSize = Math.max(1, Math.ceil(events.length / 12))
+      for (let i = 0; i < 12; i++) {
         const bucketEvents = events.slice(i * bucketSize, (i + 1) * bucketSize)
         const level = bucketEvents.length === 0 ? 0 : Math.min(4, Math.ceil((bucketEvents.length / Math.max(bucketSize, 1)) * 4))
         row.push(level)
@@ -50,7 +50,7 @@ export function TradingActivity({
   }
 
   const activityData = generateGrid()
-  const bucketLabels = ["1", "2", "3", "4", "5", "6", "7", "8"]
+  const bucketLabels = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"]
 
   const getIntensityClass = (level: number, isHovered: boolean) => {
     const baseClasses = "transition-all duration-200"
@@ -79,7 +79,7 @@ export function TradingActivity({
 
       <div className="flex gap-6">
         <div className="flex-1 relative activity-grid">
-          <div className="grid grid-cols-8 gap-1 mb-2">
+          <div className="grid grid-cols-12 gap-1.5 mb-2">
             {bucketLabels.map((label) => (
               <div key={label} className="text-[#666] text-xs text-center">
                 {label}
@@ -87,11 +87,11 @@ export function TradingActivity({
             ))}
           </div>
 
-          <div className="space-y-1">
+          <div className="space-y-1.5">
             {categories.map((category, rowIndex) => (
               <div key={category} className="flex items-center gap-2">
                 <span className="text-[#666] text-xs w-20 truncate">{category}</span>
-                <div className="flex-1 grid grid-cols-8 gap-1">
+                <div className="flex-1 grid grid-cols-12 gap-1.5">
                   {activityData[rowIndex].map((level, colIndex) => (
                     <div
                       key={colIndex}

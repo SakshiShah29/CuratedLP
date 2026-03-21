@@ -27,8 +27,16 @@ import { BLOCKSCOUT_URL, IPFS_GATEWAYS } from "@/lib/constants";
 
 /* ── Utility ────────────────────────────────────────────── */
 
-function fmtBigNum(raw: string | number, decimals = 18): string {
+/** Safe toFixed — returns "—" if value is nil or NaN */
+function safeFixed(v: number | undefined | null, digits = 2): string {
+  if (v == null || isNaN(v)) return "—";
+  return v.toFixed(digits);
+}
+
+function fmtBigNum(raw: string | number | undefined | null, decimals = 18): string {
+  if (raw == null) return "—";
   const n = typeof raw === "string" ? Number(raw) / 10 ** decimals : raw;
+  if (isNaN(n)) return "—";
   if (n >= 1e12) return `${(n / 1e12).toFixed(2)}T`;
   if (n >= 1e9) return `${(n / 1e9).toFixed(2)}B`;
   if (n >= 1e6) return `${(n / 1e6).toFixed(2)}M`;
@@ -88,7 +96,7 @@ function SentimentBadge({ sentiment, confidence }: { sentiment: string; confiden
       <Icon className="w-3 h-3" />
       {sentiment}
       {confidence !== undefined && (
-        <span className="opacity-60">{(confidence * 100).toFixed(0)}%</span>
+        <span className="opacity-60">{safeFixed(confidence != null ? confidence * 100 : undefined, 0)}%</span>
       )}
     </span>
   );
@@ -158,14 +166,14 @@ function LogSummary({ log }: { log: ExecutionLog }) {
         {log.uniswapData && (
           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-[#1a1a1a] border border-[#2a2a2a] text-xs font-mono text-white">
             <BarChart3 className="w-3 h-3 text-[#60a5fa]" />
-            ${log.uniswapData.forwardPrice.toFixed(2)}
+            ${log.uniswapData.forwardPrice?.toFixed(2) ?? "—"}
           </span>
         )}
         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-[#1a1a1a] border border-[#2a2a2a] text-xs font-mono text-[#aaa]">
           [{log.poolState.tickLower}, {log.poolState.tickUpper}]
         </span>
         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-[#1a1a1a] border border-[#2a2a2a] text-xs font-mono text-[#aaa]">
-          {(log.poolState.currentFee / 10000).toFixed(2)}% fee
+          {safeFixed(log.poolState?.currentFee != null ? log.poolState.currentFee / 10000 : undefined)}% fee
         </span>
         {log.sentiment && (
           <SentimentBadge
@@ -253,7 +261,7 @@ function LogDetail({
           <SectionHeader icon={Activity} title="Pool State" accent="text-[#60a5fa]" />
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
             <StatCard label="Tick Range" value={`[${ps.tickLower}, ${ps.tickUpper}]`} />
-            <StatCard label="Fee" value={`${(ps.currentFee / 10000).toFixed(2)}%`} />
+            <StatCard label="Fee" value={`${safeFixed(ps.currentFee != null ? ps.currentFee / 10000 : undefined)}%`} />
             <StatCard label="Total Liquidity" value={fmtBigNum(ps.totalLiquidity)} />
             <StatCard label="Total Swaps" value={ps.totalSwaps} icon={Zap} />
             <StatCard label="Cumulative Volume" value={fmtBigNum(ps.cumulativeVolume)} />
@@ -278,16 +286,16 @@ function LogDetail({
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
             <StatCard
               label="Forward Price"
-              value={`$${ud.forwardPrice.toFixed(2)}`}
+              value={`$${ud.forwardPrice?.toFixed(2) ?? "—"}`}
               color="text-white"
             />
             <StatCard
               label="Spread"
-              value={`${ud.spread.toFixed(4)} (${ud.spreadBps.toFixed(1)} bps)`}
+              value={`${safeFixed(ud.spread, 4)} (${safeFixed(ud.spreadBps, 1)} bps)`}
             />
             <StatCard
               label="Price Impact (10x)"
-              value={`${ud.priceImpact10x.toFixed(4)} (${ud.priceImpactBps} bps)`}
+              value={`${safeFixed(ud.priceImpact10x, 4)} (${ud.priceImpactBps ?? "—"} bps)`}
             />
           </div>
         </div>
@@ -303,7 +311,7 @@ function LogDetail({
                 <div className="flex items-center gap-3 mb-2">
                   <SentimentBadge sentiment={sent.sentiment} confidence={sent.confidence} />
                 </div>
-                {sent.signals.length > 0 && (
+                {sent.signals?.length > 0 && (
                   <div className="flex flex-wrap gap-1.5 mt-2">
                     {sent.signals.map((signal, i) => (
                       <span
@@ -327,12 +335,12 @@ function LogDetail({
                   />
                   <StatCard
                     label="New Fee"
-                    value={`${(rec.newFee / 10000).toFixed(2)}%`}
+                    value={`${safeFixed(rec.newFee != null ? rec.newFee / 10000 : undefined)}%`}
                     color="text-[#4ade80]"
                   />
                   <StatCard
                     label="Confidence"
-                    value={`${(rec.confidence * 100).toFixed(0)}%`}
+                    value={`${safeFixed(rec.confidence != null ? rec.confidence * 100 : undefined, 0)}%`}
                     color={rec.confidence >= 0.7 ? "text-[#4ade80]" : rec.confidence >= 0.4 ? "text-[#fbbf24]" : "text-[#f87171]"}
                   />
                 </div>
@@ -342,7 +350,7 @@ function LogDetail({
                   </p>
                 )}
                 <div className="flex flex-wrap gap-2 mt-2">
-                  {rec.dataSources.map((src, i) => (
+                  {rec.dataSources?.map((src, i) => (
                     <span
                       key={i}
                       className="px-2 py-0.5 rounded-md bg-[#c084fc]/5 border border-[#c084fc]/15 text-[#c084fc] text-xs"
@@ -526,7 +534,7 @@ export function FilecoinLogs() {
           {latestLog?.uniswapData && (
             <StatCard
               label="ETH Price"
-              value={`$${latestLog.uniswapData.forwardPrice.toFixed(2)}`}
+              value={`$${latestLog.uniswapData.forwardPrice?.toFixed(2) ?? "—"}`}
               color="text-white"
               icon={BarChart3}
             />
@@ -618,7 +626,7 @@ export function FilecoinLogs() {
                     </span>
                     {log?.uniswapData && (
                       <span className="text-white text-xs font-mono hidden sm:inline">
-                        ${log.uniswapData.forwardPrice.toFixed(2)}
+                        ${log.uniswapData.forwardPrice?.toFixed(2) ?? "—"}
                       </span>
                     )}
                     {log?.sentiment && (
@@ -628,7 +636,7 @@ export function FilecoinLogs() {
                     )}
                     {log?.recommendation && (
                       <span className="text-[#666] text-xs font-mono hidden lg:inline">
-                        {(log.recommendation.confidence * 100).toFixed(0)}% conf
+                        {safeFixed(log.recommendation.confidence != null ? log.recommendation.confidence * 100 : undefined, 0)}% conf
                       </span>
                     )}
                     {log?.eigencompute?.verifiable && (

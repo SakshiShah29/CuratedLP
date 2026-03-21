@@ -2,35 +2,25 @@
 
 import {
   LayoutDashboard,
-  HelpCircle,
-  MessageSquare,
-  User,
-  LogOut,
   Bot,
   TrendingUp,
   Brain,
   ScrollText,
+  ArrowLeftRight,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { usePathname } from "next/navigation"
 import Link from "next/link"
+import Image from "next/image"
 
 const generalLinks = [
   { icon: LayoutDashboard, label: "Dashboard", href: "/dashboard/vault" },
+  { icon: ArrowLeftRight, label: "Manage", href: "/dashboard/manage" },
   { icon: TrendingUp, label: "Performance", href: "/dashboard/performance" },
   { icon: Brain, label: "Curator AI", href: "/dashboard/curator" },
   { icon: ScrollText, label: "Agent Logs", href: "/dashboard/agent-logs" },
 ]
 
-const otherLinks = [
-  { icon: HelpCircle, label: "Support" },
-  { icon: MessageSquare, label: "Feedback" },
-]
-
-const preferenceLinks = [
-  { icon: User, label: "Account" },
-  { icon: LogOut, label: "Logout" },
-]
 
 interface SidebarProps {
   rebalanceCount?: number
@@ -46,12 +36,8 @@ export function Sidebar({ rebalanceCount, lastRebalanceTime }: SidebarProps) {
 
   return (
     <aside className="w-[200px] bg-[#0a0a0a] p-4 flex flex-col min-h-screen border-r border-[#1a1a1a]">
-      <div className="flex items-center gap-2 mb-8">
-        <div className="text-[#4ade80]">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-            <path d="M12 2L15 8L22 9L17 14L18 21L12 18L6 21L7 14L2 9L9 8L12 2Z" fill="currentColor"/>
-          </svg>
-        </div>
+      <div className="flex items-center gap-1 mb-8">
+        <Image src="/logo.png" alt="CuratedLP" width={38} height={38} />
         <span className="text-white font-semibold text-lg">CuratedLP</span>
       </div>
 
@@ -79,35 +65,6 @@ export function Sidebar({ rebalanceCount, lastRebalanceTime }: SidebarProps) {
         </nav>
       </div>
 
-      <div className="mb-6">
-        <p className="text-[#666] text-xs uppercase tracking-wider mb-3">Other</p>
-        <nav className="space-y-1">
-          {otherLinks.map((link) => (
-            <button
-              key={link.label}
-              className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm transition-colors text-[#888] hover:text-white hover:bg-[#1a1a1a]/50"
-            >
-              <link.icon className="w-4 h-4" />
-              <span>{link.label}</span>
-            </button>
-          ))}
-        </nav>
-      </div>
-
-      <div className="mb-6">
-        <p className="text-[#666] text-xs uppercase tracking-wider mb-3">Preferences</p>
-        <nav className="space-y-1">
-          {preferenceLinks.map((link) => (
-            <button
-              key={link.label}
-              className="flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm transition-colors text-[#888] hover:text-white hover:bg-[#1a1a1a]/50"
-            >
-              <link.icon className="w-4 h-4" />
-              <span>{link.label}</span>
-            </button>
-          ))}
-        </nav>
-      </div>
 
       <div className="mt-auto">
         <div className="bg-[#111111] rounded-2xl p-4 border border-[#2a2a2a]">

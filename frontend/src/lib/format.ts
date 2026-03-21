@@ -6,10 +6,15 @@ export function formatTokenAmount(
   displayDecimals: number = 4
 ): string {
   if (amount === undefined) return "0";
+  // Handle uint256 max / absurdly large sentinel values
+  if (amount > 10n ** 30n) return "MAX";
   const formatted = formatUnits(amount, decimals);
   const num = parseFloat(formatted);
   if (num === 0) return "0";
   if (num < 0.0001) return "<0.0001";
+  if (num >= 1e9) return `${(num / 1e9).toFixed(2)}B`;
+  if (num >= 1e6) return `${(num / 1e6).toFixed(2)}M`;
+  if (num >= 1e3) return `${(num / 1e3).toFixed(2)}K`;
   return num.toLocaleString("en-US", {
     minimumFractionDigits: 0,
     maximumFractionDigits: displayDecimals,

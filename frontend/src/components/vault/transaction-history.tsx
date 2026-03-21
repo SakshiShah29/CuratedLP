@@ -140,7 +140,7 @@ export function TransactionHistory({
                     {formatTokenAmount(row.amount0)}
                   </td>
                   <td className="py-3 text-right text-white font-mono">
-                    {formatTokenAmount(row.amount1, 6)}
+                    {formatTokenAmount(row.amount1)}
                   </td>
                   <td className="py-3 text-right text-[#4ade80] font-mono">
                     {formatTokenAmount(row.shares)}

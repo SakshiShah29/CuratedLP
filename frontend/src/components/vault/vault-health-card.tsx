@@ -1,6 +1,7 @@
 "use client";
 
-import { isFullRange, tickToPrice, formatLargeNumber } from "@/lib/format";
+import { isFullRange, tickToPrice } from "@/lib/format";
+import { formatUnits } from "viem";
 import { Activity, Droplets, Target } from "lucide-react";
 import { TokenIcon } from "@/components/ui/token-icon";
 
@@ -97,7 +98,10 @@ export function VaultHealthCard({
   poolComposition,
   isLoading,
 }: VaultHealthCardProps) {
-  const liqNum = liquidity ? Number(liquidity) : 0;
+  // Liquidity is a raw uint128 — format with 18 decimals for human-readable display
+  const liqFormatted = liquidity
+    ? Number(formatUnits(liquidity, 18)).toLocaleString("en-US", { maximumFractionDigits: 2 })
+    : "0";
   const fullRange =
     tickLower !== undefined && tickUpper !== undefined
       ? isFullRange(tickLower, tickUpper)
@@ -160,7 +164,7 @@ export function VaultHealthCard({
             <div>
               <p className="text-[#666] text-xs mb-1">Active Liquidity</p>
               <p className="text-white font-mono font-semibold text-xl">
-                {isLoading ? "..." : formatLargeNumber(liqNum)}
+                {isLoading ? "..." : liqFormatted}
               </p>
             </div>
             <div className="w-10 h-10 rounded-full bg-[#4ade80]/10 flex items-center justify-center">

@@ -98,12 +98,12 @@ IMPORTANT: idleToken0 must be >= accruedPerformanceFee0 for claim to succeed.
 
 **Primary: eigencompute recommendation (Venice AI via EigenCompute TEE)**
 
-If eigencompute returned a recommendation with confidence >= 0.6 AND the recommended
+If eigencompute returned a recommendation with confidence >= 0.55 AND the recommended
 parameters differ meaningfully from current state:
 → Use eigencompute's newTickLower, newTickUpper, newFee.
 → Log attestationHash and verifiable status in REFLECT.
 
-**Fallback: Phase 3 simple heuristic (only if eigencompute unavailable or confidence < 0.6)**
+**Fallback: Phase 3 simple heuristic (only if eigencompute unavailable or confidence < 0.55)**
 
 Rebalance if ANY of:
 - Range is full range [-887220, 887220] — tighten to ~[-6000, 6000]
@@ -120,7 +120,7 @@ Constraint: Cannot rebalance more than once per 30 blocks. If "RebalanceTooFrequ
 ### RULE 3 — DO NOTHING
 Only if:
 - accruedPerformanceFee0 == 0 AND accruedPerformanceFee1 == 0
-- eigencompute confidence is below 0.6 (or unavailable and Phase 3 heuristic shows no issue)
+- eigencompute confidence is below 0.55 (or unavailable and Phase 3 heuristic shows no issue)
 - Position appears healthy (in-range, not full-range)
 - No strong signal to change range or fee
 

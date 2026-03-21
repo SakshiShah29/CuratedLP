@@ -136,14 +136,14 @@ export function TokensSection({
             </div>
             {activeFilter === "Wallet" ? (
               <Link
-                href="/dashboard/vault#deposit"
+                href="/dashboard/manage#deposit"
                 className="px-6 py-2 bg-[#4ade80] text-black font-medium rounded-lg text-sm hover:bg-[#22c55e] transition-colors"
               >
                 Deposit
               </Link>
             ) : (
               <Link
-                href="/dashboard/vault#withdraw"
+                href="/dashboard/manage#withdraw"
                 className="px-6 py-2 bg-[#0a0a0a] border border-[#4ade80]/20 rounded-lg text-[#4ade80] text-sm hover:bg-[#4ade80]/5 transition-colors"
               >
                 Withdraw
