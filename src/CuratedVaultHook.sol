@@ -608,7 +608,7 @@ contract CuratedVaultHook is BaseHook, IUnlockCallback, ReentrancyGuard {
 
             // Reserve the accrued performance fee in token0 so claimPerformanceFee()
             // always has idle token0 to pay from. Cap at available balance.
-            uint256 feeReserve = accruedPerformanceFee < balance0 ? accruedPerformanceFee : balance0;
+            uint256 feeReserve = accruedPerformanceFee0 < balance0 ? accruedPerformanceFee0 : balance0;
 
             uint128 newLiquidity = _getLiquidityForAmounts(
                 sqrtPriceX96,

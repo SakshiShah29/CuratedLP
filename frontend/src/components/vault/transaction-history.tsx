@@ -1,0 +1,130 @@
+"use client";
+
+import { shortenAddress, formatTokenAmount } from "@/lib/format";
+import type { DepositedEvent, WithdrawnEvent } from "@/hooks/use-vault-events";
+
+interface TransactionHistoryProps {
+  deposits: DepositedEvent[];
+  withdrawals: WithdrawnEvent[];
+  token0Symbol?: string;
+  token1Symbol?: string;
+  isLoading: boolean;
+}
+
+type TxRow = {
+  type: "Deposit" | "Withdraw";
+  address: string;
+  amount0: bigint;
+  amount1: bigint;
+  shares: bigint;
+  txHash: string;
+  blockNumber: bigint;
+};
+
+export function TransactionHistory({
+  deposits,
+  withdrawals,
+  token0Symbol = "Token0",
+  token1Symbol = "Token1",
+  isLoading,
+}: TransactionHistoryProps) {
+  const rows: TxRow[] = [
+    ...deposits.map((d) => ({
+      type: "Deposit" as const,
+      address: d.depositor,
+      amount0: d.amount0,
+      amount1: d.amount1,
+      shares: d.shares,
+      txHash: d.transactionHash,
+      blockNumber: d.blockNumber,
+    })),
+    ...withdrawals.map((w) => ({
+      type: "Withdraw" as const,
+      address: w.withdrawer,
+      amount0: w.amount0,
+      amount1: w.amount1,
+      shares: w.shares,
+      txHash: w.transactionHash,
+      blockNumber: w.blockNumber,
+    })),
+  ]
+    .sort((a, b) => Number(b.blockNumber - a.blockNumber))
+    .slice(0, 10);
+
+  return (
+    <div
+      className="rounded-2xl p-5 border border-[#2a2a2a] bg-[#141414] relative overflow-hidden"
+      style={{
+        background:
+          "radial-gradient(ellipse at 50% 100%, rgba(74, 222, 128, 0.08) 0%, transparent 50%), #141414",
+      }}
+    >
+      <h3 className="text-white text-lg font-semibold mb-5">Transaction History</h3>
+
+      {isLoading ? (
+        <p className="text-[#666] text-sm text-center py-8">Loading transactions...</p>
+      ) : rows.length === 0 ? (
+        <p className="text-[#666] text-sm text-center py-8">No transactions yet</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-[#666] text-xs">
+                <th className="text-left pb-3 font-normal">Type</th>
+                <th className="text-left pb-3 font-normal">Address</th>
+                <th className="text-right pb-3 font-normal">{token0Symbol}</th>
+                <th className="text-right pb-3 font-normal">{token1Symbol}</th>
+                <th className="text-right pb-3 font-normal">Shares</th>
+                <th className="text-right pb-3 font-normal">Tx</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#1a1a1a]">
+              {rows.map((row, i) => (
+                <tr
+                  key={`${row.txHash}-${i}`}
+                  className={`border-l-2 ${
+                    row.type === "Deposit" ? "border-l-[#4ade80]" : "border-l-[#ef4444]"
+                  }`}
+                >
+                  <td className="py-3 pl-3">
+                    <span
+                      className={`text-xs font-medium px-2 py-0.5 rounded ${
+                        row.type === "Deposit"
+                          ? "bg-[#4ade80]/10 text-[#4ade80]"
+                          : "bg-[#ef4444]/10 text-[#ef4444]"
+                      }`}
+                    >
+                      {row.type}
+                    </span>
+                  </td>
+                  <td className="py-3 text-white font-mono text-xs">
+                    {shortenAddress(row.address)}
+                  </td>
+                  <td className="py-3 text-right text-white font-mono">
+                    {formatTokenAmount(row.amount0)}
+                  </td>
+                  <td className="py-3 text-right text-white font-mono">
+                    {formatTokenAmount(row.amount1, 6)}
+                  </td>
+                  <td className="py-3 text-right text-[#4ade80] font-mono">
+                    {formatTokenAmount(row.shares)}
+                  </td>
+                  <td className="py-3 text-right">
+                    <a
+                      href={`https://sepolia.basescan.org/tx/${row.txHash}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[#4ade80] hover:underline text-xs font-mono"
+                    >
+                      {row.txHash.slice(0, 6)}...
+                    </a>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
