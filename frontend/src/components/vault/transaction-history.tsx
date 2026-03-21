@@ -4,6 +4,7 @@ import { ExternalLink } from "lucide-react";
 import { useAccount } from "wagmi";
 import { useTransactionPopup } from "@blockscout/app-sdk";
 import { shortenAddress, formatTokenAmount } from "@/lib/format";
+import { TokenIcon } from "@/components/ui/token-icon";
 import { BASE_SEPOLIA_CHAIN_ID } from "@/lib/constants";
 import type { DepositedEvent, WithdrawnEvent } from "@/hooks/use-vault-events";
 
@@ -97,8 +98,18 @@ export function TransactionHistory({
               <tr className="text-[#666] text-xs">
                 <th className="text-left pb-3 font-normal">Type</th>
                 <th className="text-left pb-3 font-normal">Address</th>
-                <th className="text-right pb-3 font-normal">{token0Symbol}</th>
-                <th className="text-right pb-3 font-normal">{token1Symbol}</th>
+                <th className="text-right pb-3 font-normal">
+                  <span className="inline-flex items-center gap-1 justify-end">
+                    <TokenIcon symbol={token0Symbol} size={14} />
+                    {token0Symbol}
+                  </span>
+                </th>
+                <th className="text-right pb-3 font-normal">
+                  <span className="inline-flex items-center gap-1 justify-end">
+                    <TokenIcon symbol={token1Symbol} size={14} />
+                    {token1Symbol}
+                  </span>
+                </th>
                 <th className="text-right pb-3 font-normal">Shares</th>
                 <th className="text-right pb-3 font-normal">Tx</th>
               </tr>

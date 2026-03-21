@@ -7,9 +7,9 @@ import { HOOK_ADDRESS } from "@/lib/constants";
 export interface CuratorData {
   wallet: `0x${string}`;
   erc8004IdentityId: bigint;
-  performanceFeeBps: number;
+  recommendedFee: number;
+  performanceFeeBps: bigint;
   lastRebalanceBlock: bigint;
-  rebalanceCount: bigint;
   active: boolean;
 }
 

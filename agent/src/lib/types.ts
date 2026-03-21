@@ -17,7 +17,8 @@ export interface PoolState {
   totalSwaps: number;
   idleToken0: string;
   idleToken1: string;
-  accruedPerformanceFee: string;
+  accruedPerformanceFee0: string;
+  accruedPerformanceFee1: string;
   activeCuratorId: number;
   currentBlock: number;
 }

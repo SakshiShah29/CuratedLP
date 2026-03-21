@@ -2,6 +2,7 @@
 
 import { Shield, ExternalLink, CheckCircle } from "lucide-react"
 import { BASESCAN_URL, REPUTATION_REGISTRY, IDENTITY_REGISTRY } from "@/lib/constants"
+import { useBasename } from "@/hooks/use-basename"
 import { formatTokenAmount } from "@/lib/format"
 import type { CuratorData } from "@/hooks/use-curator-data"
 
@@ -9,13 +10,14 @@ interface ReputationFeedProps {
   curator?: CuratorData
   cumulativeFeeRevenue?: bigint
   totalSwaps?: bigint
+  rebalanceCount?: number
 }
 
-export function ReputationFeed({ curator, cumulativeFeeRevenue, totalSwaps }: ReputationFeedProps) {
-  const rebalanceCount = curator?.rebalanceCount?.toString() ?? "0"
+export function ReputationFeed({ curator, cumulativeFeeRevenue, totalSwaps, rebalanceCount = 0 }: ReputationFeedProps) {
+  const { basename } = useBasename(curator?.wallet)
   const feePerCycle =
-    curator?.rebalanceCount && curator.rebalanceCount > 0n && cumulativeFeeRevenue
-      ? Number(cumulativeFeeRevenue) / 1e18 / Number(curator.rebalanceCount)
+    rebalanceCount > 0 && cumulativeFeeRevenue
+      ? Number(cumulativeFeeRevenue) / 1e18 / rebalanceCount
       : 0
 
   return (
@@ -45,6 +47,13 @@ export function ReputationFeed({ curator, cumulativeFeeRevenue, totalSwaps }: Re
           <span className="text-[#888] text-sm">Total swaps tracked</span>
           <span className="text-[#4ade80] font-mono font-medium">
             {totalSwaps?.toString() ?? "0"}
+          </span>
+        </div>
+
+        <div className="flex items-center justify-between p-3 bg-[#0a0a0a] rounded-lg border border-[#2a2a2a] hover:border-[#4ade80]/20 transition-colors">
+          <span className="text-[#888] text-sm">Basename</span>
+          <span className={`font-mono text-sm ${basename ? "text-[#4ade80]" : "text-[#888]"}`}>
+            {basename ?? "—"}
           </span>
         </div>
 

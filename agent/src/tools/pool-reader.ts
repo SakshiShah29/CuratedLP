@@ -56,7 +56,14 @@ const HOOK_ABI = [
   },
   {
     type: "function",
-    name: "accruedPerformanceFee",
+    name: "accruedPerformanceFee0",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "accruedPerformanceFee1",
     inputs: [],
     outputs: [{ name: "", type: "uint256" }],
     stateMutability: "view",
@@ -83,7 +90,7 @@ async function main() {
     transport: http(RPC_URL),
   });
 
-  const [metrics, assets, curatorId, accruedFee, tickLower, tickUpper, blockNumber] =
+  const [metrics, assets, curatorId, accruedFee0, accruedFee1, tickLower, tickUpper, blockNumber] =
     await Promise.all([
       client.readContract({
         address: HOOK_ADDRESS,
@@ -103,7 +110,12 @@ async function main() {
       client.readContract({
         address: HOOK_ADDRESS,
         abi: HOOK_ABI,
-        functionName: "accruedPerformanceFee",
+        functionName: "accruedPerformanceFee0",
+      }),
+      client.readContract({
+        address: HOOK_ADDRESS,
+        abi: HOOK_ABI,
+        functionName: "accruedPerformanceFee1",
       }),
       client.readContract({
         address: HOOK_ADDRESS,
@@ -131,7 +143,8 @@ async function main() {
     totalSwaps: Number(swapCount),
     idleToken0: idleToken0.toString(),
     idleToken1: idleToken1.toString(),
-    accruedPerformanceFee: accruedFee.toString(),
+    accruedPerformanceFee0: accruedFee0.toString(),
+    accruedPerformanceFee1: accruedFee1.toString(),
     activeCuratorId: Number(curatorId),
     currentBlock: Number(blockNumber),
   };

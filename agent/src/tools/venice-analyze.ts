@@ -356,7 +356,10 @@ function buildUserMessage(
   lines.push(`  idleToken0: ${pool.idleToken0 ?? "unknown"}`);
   lines.push(`  idleToken1: ${pool.idleToken1 ?? "unknown"}`);
   lines.push(
-    `  accruedPerformanceFee: ${pool.accruedPerformanceFee ?? "unknown"}`
+    `  accruedPerformanceFee0: ${pool.accruedPerformanceFee0 ?? "unknown"}`
+  );
+  lines.push(
+    `  accruedPerformanceFee1: ${pool.accruedPerformanceFee1 ?? "unknown"}`
   );
   lines.push("");
 

@@ -4,6 +4,7 @@ import { MoreHorizontal } from "lucide-react"
 import { useState } from "react"
 import { formatTokenAmount } from "@/lib/format"
 import Link from "next/link"
+import { TokenIcon } from "@/components/ui/token-icon"
 
 interface TokensSectionProps {
   shareBalance?: bigint
@@ -136,9 +137,7 @@ export function TokensSection({
             className="flex items-center justify-between bg-[#1a1a1a] rounded-xl p-4"
           >
             <div className="flex items-center gap-3">
-              <div className={`w-10 h-10 rounded-full ${token.iconBg} flex items-center justify-center`}>
-                <span className={`${token.iconColor} text-lg font-bold`}>{token.icon}</span>
-              </div>
+              <TokenIcon symbol={token.symbol} size={40} />
               <div>
                 <div className="flex items-baseline gap-1">
                   <span className="text-white font-semibold font-mono">{token.amount}</span>
@@ -149,14 +148,14 @@ export function TokensSection({
             </div>
             {activeFilter === "Wallet" ? (
               <Link
-                href="/dashboard/manage"
+                href="/dashboard/vault#deposit"
                 className="px-6 py-2 bg-[#4ade80] text-black font-medium rounded-lg text-sm hover:bg-[#22c55e] transition-colors"
               >
                 Deposit
               </Link>
             ) : (
               <Link
-                href="/dashboard/manage"
+                href="/dashboard/vault#deposit"
                 className="px-6 py-2 bg-[#0a0a0a] border border-[#333] rounded-lg text-white text-sm hover:bg-[#1a1a1a] transition-colors"
               >
                 Manage

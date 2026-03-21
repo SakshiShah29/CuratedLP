@@ -9,7 +9,7 @@ import {
   Bot,
   TrendingUp,
   Brain,
-  ArrowLeftRight,
+  ScrollText,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { usePathname } from "next/navigation"
@@ -17,9 +17,9 @@ import Link from "next/link"
 
 const generalLinks = [
   { icon: LayoutDashboard, label: "Dashboard", href: "/dashboard/vault" },
-  { icon: ArrowLeftRight, label: "Manage", href: "/dashboard/manage" },
   { icon: TrendingUp, label: "Performance", href: "/dashboard/performance" },
   { icon: Brain, label: "Curator AI", href: "/dashboard/curator" },
+  { icon: ScrollText, label: "Agent Logs", href: "/dashboard/agent-logs" },
 ]
 
 const otherLinks = [

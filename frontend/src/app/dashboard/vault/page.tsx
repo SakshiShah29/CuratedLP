@@ -8,6 +8,9 @@ import { ReferralCard } from "@/components/dashboard/referral-card";
 import { ChatWidget } from "@/components/dashboard/chat-widget";
 import { VaultHealthCard } from "@/components/vault/vault-health-card";
 import { VolumeRevenueCard } from "@/components/vault/volume-revenue-card";
+import { DepositForm } from "@/components/vault/deposit-form";
+import { WithdrawForm } from "@/components/vault/withdraw-form";
+import { TransactionHistory } from "@/components/vault/transaction-history";
 import { useVaultData } from "@/hooks/use-vault-data";
 import { useUserPosition } from "@/hooks/use-user-position";
 import { useCuratorData } from "@/hooks/use-curator-data";
@@ -31,12 +34,19 @@ export default function VaultPage() {
     tickUpper: vault.tickUpper,
     performanceMetrics: vault.performanceMetrics,
     swaps,
+    token0Decimals: user.token0Decimals,
+    token1Decimals: user.token1Decimals,
   });
+
+  const handleTxSuccess = () => {
+    vault.refetch();
+    user.refetch();
+  };
 
   return (
     <div>
       <CryptoCards
-        totalAssets={vault.totalAssets}
+        totalAssets={metrics.managedAssets}
         currentFee={vault.currentFee}
         totalSwaps={vault.totalSwaps}
         token0Symbol={user.token0Symbol}
@@ -71,6 +81,36 @@ export default function VaultPage() {
         />
       </div>
 
+      {/* Deposit & Withdraw */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
+        <DepositForm
+          token0Address={token0Address}
+          token1Address={token1Address}
+          token0Symbol={user.token0Symbol}
+          token1Symbol={user.token1Symbol}
+          token0Balance={user.token0Balance}
+          token1Balance={user.token1Balance}
+          token0Decimals={user.token0Decimals}
+          token1Decimals={user.token1Decimals}
+          token0Allowance={user.token0Allowance}
+          token1Allowance={user.token1Allowance}
+          totalAssets={vault.totalAssets}
+          totalSupply={vault.totalSupply}
+          isConnected={user.isConnected}
+          onSuccess={handleTxSuccess}
+          refetchAllowances={user.refetch}
+        />
+        <WithdrawForm
+          shareBalance={user.shareBalance}
+          totalSupply={user.totalSupply}
+          totalAssets={vault.totalAssets}
+          token0Symbol={user.token0Symbol}
+          token1Symbol={user.token1Symbol}
+          isConnected={user.isConnected}
+          onSuccess={handleTxSuccess}
+        />
+      </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
         <div className="lg:col-span-2">
           <VaultHealthCard
@@ -90,6 +130,17 @@ export default function VaultPage() {
           annualizedFeeYield={metrics.annualizedFeeYield}
           volume24h={metrics.volume24h}
           isLoading={vault.isLoading}
+        />
+      </div>
+
+      {/* Transaction History */}
+      <div className="mt-6">
+        <TransactionHistory
+          deposits={deposits}
+          withdrawals={withdrawals}
+          token0Symbol={user.token0Symbol}
+          token1Symbol={user.token1Symbol}
+          isLoading={eventsLoading}
         />
       </div>
 

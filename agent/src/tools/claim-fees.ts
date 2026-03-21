@@ -24,6 +24,7 @@ import {
   type Hex,
   type Address,
 } from "viem";
+import { logCycle } from "../lib/logger.js";
 import { baseSepolia } from "viem/chains";
 import { privateKeyToAccount } from "viem/accounts";
 import {
@@ -44,7 +45,7 @@ const HOOK_ADDRESS = process.env.HOOK_ADDRESS as Address;
 const ENFORCER_ADDRESS = process.env.ENFORCER_ADDRESS as Address;
 
 // Token0 address (MockERC20 on Base Sepolia — from poolKey.currency0)
-const TOKEN0_ADDRESS = "0x0F72E0a52dcef684D5C799f62236e095Ef9c3269" as Address;
+const TOKEN0_ADDRESS = "0x6759d506D168a32d6aFB356BCCDE1aE20cA15451" as Address;
 
 const MIN_FEE = Number(process.env.DELEGATION_MIN_FEE ?? "100");
 const MAX_FEE = Number(process.env.DELEGATION_MAX_FEE ?? "50000");
@@ -68,11 +69,16 @@ async function main() {
   // Pre-flight: check hook's idle token0 balance covers the accrued fee.
   // After a rebalance all token0 is deployed as liquidity — the hook has no
   // idle balance to pay from. Skip gracefully rather than hitting a Panic.
-  const [accruedFee, hookBalance] = await Promise.all([
+  const [accruedFee0, accruedFee1, hookBalance] = await Promise.all([
     publicClient.readContract({
       address: HOOK_ADDRESS,
-      abi: [{ type: "function", name: "accruedPerformanceFee", inputs: [], outputs: [{ type: "uint256" }], stateMutability: "view" }],
-      functionName: "accruedPerformanceFee",
+      abi: [{ type: "function", name: "accruedPerformanceFee0", inputs: [], outputs: [{ type: "uint256" }], stateMutability: "view" }],
+      functionName: "accruedPerformanceFee0",
+    }),
+    publicClient.readContract({
+      address: HOOK_ADDRESS,
+      abi: [{ type: "function", name: "accruedPerformanceFee1", inputs: [], outputs: [{ type: "uint256" }], stateMutability: "view" }],
+      functionName: "accruedPerformanceFee1",
     }),
     publicClient.readContract({
       address: TOKEN0_ADDRESS,
@@ -82,11 +88,17 @@ async function main() {
     }),
   ]);
 
-  if (hookBalance < accruedFee) {
+  if (accruedFee0 === 0n && accruedFee1 === 0n) {
+    console.log(JSON.stringify({ success: false, error: "NoFeesToClaim" }, null, 2));
+    process.exit(0);
+  }
+
+  if (hookBalance < accruedFee0) {
     console.log(JSON.stringify({
       success: false,
       error: "InsufficientHookBalance",
-      accruedFee: accruedFee.toString(),
+      accruedFee0: accruedFee0.toString(),
+      accruedFee1: accruedFee1.toString(),
       hookToken0Balance: hookBalance.toString(),
       note: "Fees track swap volume but token0 is deployed as liquidity. Will be claimable after next rebalance collects LP fees.",
     }, null, 2));
@@ -152,12 +164,22 @@ async function main() {
 
   const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
 
+  const success = receipt.status === "success";
   console.log(JSON.stringify({
-    success: receipt.status === "success",
+    success,
     txHash,
     blockNumber: Number(receipt.blockNumber),
     gasUsed: receipt.gasUsed.toString(),
   }, null, 2));
+
+  if (success) {
+    logCycle({
+      timestamp: new Date().toISOString(),
+      action: "CLAIMED",
+      summary: "Claimed accrued performance fees",
+      txHash,
+    });
+  }
 }
 
 main().catch((err) => {
@@ -168,6 +190,14 @@ main().catch((err) => {
     success: false,
     error: noFees ? "NoFeesToClaim" : msg.slice(0, 200),
   }, null, 2));
+  if (!noFees) {
+    logCycle({
+      timestamp: new Date().toISOString(),
+      action: "ERROR",
+      summary: `Fee claim failed: ${msg.slice(0, 120)}`,
+      error: msg.slice(0, 200),
+    });
+  }
   // Exit 0 for NoFeesToClaim — it's an expected condition, not a failure.
   process.exit(noFees ? 0 : 1);
 });

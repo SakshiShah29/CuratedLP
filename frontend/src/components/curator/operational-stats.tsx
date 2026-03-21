@@ -4,7 +4,7 @@ import { MoreHorizontal } from "lucide-react"
 import { formatTokenAmount } from "@/lib/format"
 
 interface OperationalStatsProps {
-  rebalanceCount?: bigint
+  rebalanceCount?: number
   accruedFee0?: bigint
   accruedFee1?: bigint
   totalSwaps?: bigint

@@ -3,30 +3,15 @@
 import { TrendingUp, Zap, MoreHorizontal } from "lucide-react"
 
 interface APYComparisonProps {
-  cumulativeFeeRevenue?: bigint
-  totalAssets?: [bigint, bigint]
+  annualizedFeeYield: number
   isLoading: boolean
 }
 
 export function APYComparison({
-  cumulativeFeeRevenue,
-  totalAssets,
+  annualizedFeeYield,
   isLoading,
 }: APYComparisonProps) {
-  // Calculate vault APY from on-chain data
-  let vaultAPY = 0
-  if (
-    cumulativeFeeRevenue &&
-    totalAssets &&
-    totalAssets[0] > 0n &&
-    cumulativeFeeRevenue > 0n
-  ) {
-    const feeRevenueNum = Number(cumulativeFeeRevenue) / 1e18
-    const totalAssetsNum = Number(totalAssets[0]) / 1e18
-    // Assuming ~7 days of testnet operation
-    const dailyReturn = feeRevenueNum / totalAssetsNum / 7
-    vaultAPY = dailyReturn * 365 * 100
-  }
+  const vaultAPY = annualizedFeeYield
 
   // Passive LP benchmark estimate (typically lower)
   const passiveAPY = vaultAPY > 0 ? vaultAPY * 0.65 : 0

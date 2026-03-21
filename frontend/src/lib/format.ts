@@ -25,10 +25,16 @@ export function shortenAddress(address: string): string {
   return `${address.slice(0, 6)}...${address.slice(-4)}`;
 }
 
+export function isFullRange(tickLower: number, tickUpper: number): boolean {
+  return tickLower <= -887200 && tickUpper >= 887200;
+}
+
 export function tickToPrice(tick: number): string {
+  if (tick <= -887200) return "0";
+  if (tick >= 887200) return "∞";
   const price = Math.pow(1.0001, tick);
   if (price < 0.001) return price.toExponential(2);
-  if (price > 1000000) return price.toExponential(2);
+  if (price > 1_000_000) return price.toExponential(2);
   return price.toLocaleString("en-US", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 6,
@@ -36,8 +42,11 @@ export function tickToPrice(tick: number): string {
 }
 
 export function formatLargeNumber(num: number): string {
-  if (num >= 1_000_000) return `${(num / 1_000_000).toFixed(2)}M`;
-  if (num >= 1_000) return `${(num / 1_000).toFixed(2)}K`;
+  if (num >= 1e15) return `${(num / 1e15).toFixed(2)}Q`;
+  if (num >= 1e12) return `${(num / 1e12).toFixed(2)}T`;
+  if (num >= 1e9) return `${(num / 1e9).toFixed(2)}B`;
+  if (num >= 1e6) return `${(num / 1e6).toFixed(2)}M`;
+  if (num >= 1e3) return `${(num / 1e3).toFixed(2)}K`;
   return num.toFixed(2);
 }
 
