@@ -61,13 +61,14 @@ async function fetchBalance(apiKey: string): Promise<{ balance: number; walletAd
 
   // Try all known field names for the USDC balance amount
   const balance =
-    typeof data.balance === "number" ? data.balance :
-    typeof data.usdc    === "number" ? data.usdc    :
-    typeof data.amount  === "number" ? data.amount  :
-    // Also handle string representations (some APIs return "10.00")
-    typeof data.balance === "string" ? parseFloat(data.balance) || 0 :
-    typeof data.usdc    === "string" ? parseFloat(data.usdc)    || 0 :
-    0;
+      typeof data.balance === "number" ? data.balance :
+      typeof data.usdc    === "number" ? data.usdc    :
+      typeof data.amount  === "number" ? data.amount  :
+      typeof data.usdc_balance === "number" ? data.usdc_balance :
+      // Also handle string representations (some APIs return "10.00")
+      typeof data.balance === "string" ? parseFloat(data.balance) || 0 :
+      typeof data.usdc    === "string" ? parseFloat(data.usdc)    || 0 :
+      typeof data["usdc_balance"] === "string" ? parseFloat(data["usdc_balance"]) || 0 : 0;
 
   // Try to extract wallet address (for logging)
   const walletAddress =

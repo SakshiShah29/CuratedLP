@@ -74,9 +74,16 @@ export const CONFIDENCE_THRESHOLD  = optionalFloat("CONFIDENCE_THRESHOLD", 0.6);
 
 export const UNISWAP_API_KEY       = optional("UNISWAP_API_KEY");
 
-// ─── Phase 4 — EigenCompute (eigencompute.ts) ──────────────────────────────
+// ─── Phase 4 — EigenCompute (eigencompute.ts) ───────────────────────────────
 
-export const EIGENCOMPUTE_ENABLED  = optional("EIGENCOMPUTE_ENABLED", "true") === "true";
+/** "tee" = Call deployed EigenCompute TEE service (full Venice pipeline).
+ *  "off" = Skip verifiable compute, use Venice directly. */
+export type EigenComputeMode = "tee" | "off";
+export const EIGENCOMPUTE_MODE     = (optional("EIGENCOMPUTE_MODE", "tee")) as EigenComputeMode;
+export const EIGENCOMPUTE_ENABLED  = EIGENCOMPUTE_MODE !== "off";
+
+/** URL of the deployed EigenCompute TEE service. */
+export const EIGENCOMPUTE_ENDPOINT = optional("EIGENCOMPUTE_ENDPOINT");
 
 // ─── Directory paths ─────────────────────────────────────────────────────────
 

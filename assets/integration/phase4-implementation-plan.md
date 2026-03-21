@@ -1,8 +1,8 @@
 # Phase 4 Implementation Plan — REVISED
 
-## Venice AI + EigenCompute + Locus + Olas + Uniswap API
+## Venice AI + EigenCompute + Uniswap API + DeFiLlama
 
-*Last updated: 2026-03-20 (v2 — replaces original phase4-implementation-plan.md)*
+*Last updated: 2026-03-21 (v3 — removes Olas + Locus, adds DeFiLlama, finalizes bounty targets)*
 
 *Depends on: openclaw-agent-spec.md, curator-agent-identity-spec.md, phase3-testing.md*
 
@@ -27,8 +27,8 @@ on it. EigenCloud ($5,000) replaces it as the new bounty target.
 | Bounty: EigenCloud ($5,000) | Not targeted | **NEW TARGET** |
 | Uniswap API depth | 1 requestId per cycle | **4 requestIds per cycle (1,152+/day) + DeFiLlama analytics** |
 | Total Phase 4 bounty value | $20,750 | **$20,500** (nearly identical) |
-| Locus spending | Pays for x402 + Olas | Pays for Olas Mech requests only |
-| Tool count | 8 | **8** (pool-reader, check-budget, uniswap-data, eigencompute, olas-analyze, venice-analyze, execute-rebalance, claim-fees) |
+| Paid data sources | x402 + Olas via Locus | **NONE — all data sources are free (Uniswap API, DeFiLlama, Venice AI)** |
+| Tool count | 8 | **6** (pool-reader, uniswap-data, venice-analyze, eigencompute, execute-rebalance, claim-fees) |
 
 **What stays exactly the same:**
 
@@ -36,10 +36,8 @@ on it. EigenCloud ($5,000) replaces it as the new bounty target.
 - SKILL.md as the agent's decision framework
 - The heartbeat cycle (OBSERVE → REASON → ANALYZE → DECIDE → ACT → REFLECT)
 - All Phase 3 tools (pool-reader, execute-rebalance, claim-fees)
-- Venice AI as the primary intelligence (venice-analyze)
-- Uniswap Trading API as the primary data source (expanded to 4 calls)
-- Olas Mech for cross-checks (olas-analyze)
-- Locus for agent spending controls (check-budget)
+- Venice AI as the primary intelligence (venice-analyze, two-call pipeline)
+- Uniswap Trading API as the primary data source (expanded to 4 calls + DeFiLlama)
 - Foundation libraries (config.ts, types.ts, logger.ts, cache.ts)
 
 ---
@@ -106,7 +104,7 @@ It reads the SKILL.md, invokes tools via exec, and reasons about what
 to do each heartbeat. The TypeScript tools are stateless CLI commands,
 not parts of a state machine.
 
-**Bounty targets**: Venice AI ($11,500) + EigenCloud ($5,000) + Locus ($3,000) + Olas ($1,000) = $20,500 total from Phase 4. Combined with Uniswap ($5,000) + MetaMask ($5,000) + ENS ($1,500) + Self ($1,000) from other phases = $33,000 grand total.
+**Bounty targets from Phase 4**: Venice AI ($11,500) + EigenCloud ($5,000) + Uniswap ($5,000) = $21,500 from Phase 4. Combined with MetaMask ($5,000) + Protocol Labs ($4,000) from other phases + Filecoin ($1,000) + ENS ($400) from Phase 5 + Open Track ($28,309) = **$60,209 total addressable**.
 
 ---
 
@@ -1497,11 +1495,11 @@ Run the agent for 3+ heartbeat cycles on Base Sepolia and verify:
 |---|---|---|
 | Venice AI | $11,500 | venice-analyze runs a two-call pipeline: Call #1 gathers sentiment via web search, Call #2 analyzes all structured data (Uniswap + DeFiLlama + sentiment) with web search OFF. Function calling produces structured recommendations. Reasoning trail shows Venice analyzing exact spread, depth, TVL, and sentiment signals. Private inference (zero data retention). |
 | EigenCloud | $5,000 | Both Venice calls packaged as Docker image, deployed on EigenCompute TEE. Single attestation covers full pipeline (sentiment → analysis → recommendation). Working demo shows attestation hash in agent logs. |
-| Locus | $3,000 | check-budget queries Locus wallet. Olas Mech payments flow through Locus with per-tx and daily spending controls. Agent adapts behavior based on remaining budget. |
-| Olas | $1,000 | olas-analyze sends 10+ distinct Mech requests per session to cross-check Venice's recommendation. Each generates on-chain tx hash. Results are load-bearing validation — agent adjusts or skips when Olas disagrees with Venice. |
+| ~~Locus~~ | ~~$3,000~~ | **DROPPED** — no paid data services to route through Locus after Olas dropped. All remaining data sources (Uniswap API, DeFiLlama, Venice AI) are free. |
+| ~~Olas~~ | ~~$1,000~~ | **DROPPED** — no USDC-paying mech with analysis tools on Base. All Base mechs are ETH-only (Fixed Price Native), Locus holds USDC only. |
 | Uniswap | $5,000 | uniswap-data makes 4 real API calls per cycle with real key. Forward/reverse/large quotes + check_approval. 4 requestIds logged per cycle = 1,152+/day. DeFiLlama analytics (TVL, yields) integrated in same tool. Combined with pool-reader reading from Uniswap v4 hook + AI Skills. Deepest API integration of any bounty submission. |
 
-Phase 4 total: $20,500. Combined with MetaMask ($5,000) + ENS ($1,500) + Self ($1,000) from other phases = **$33,000 grand total**.
+Phase 4 total: $21,500. Combined with MetaMask ($5,000) + Protocol Labs ($4,000) from other phases + Filecoin ($1,000) + ENS ($400) from Phase 5 + Open Track ($28,309) = **$60,209 total addressable**.
 
 ---
 
@@ -1512,12 +1510,12 @@ Phase 4 total: $20,500. Combined with MetaMask ($5,000) + ENS ($1,500) + Self ($
 | Venice rate limited (429) | Fallback to secondary model. If both fail, skip cycle. |
 | EigenCompute TEE unavailable | Fall back to direct venice-analyze (unverified but functional). Agent logs "running unverified". |
 | EigenCompute Docker build issues | Test Dockerfile locally first. Image is minimal (Node.js + venice-analyze only). |
-| Locus API unreachable | check-budget returns canSpend=false. Agent uses cache for Olas data. Venice + Uniswap still work (free). |
-| Olas Mech timeout (>120s) | 120s kill per request. Partial results OK. Agent notes shortfall. |
+| ~~Locus API unreachable~~ | N/A — Locus removed from architecture. |
+| ~~Olas Mech timeout~~ | N/A — Olas removed from architecture. |
 | Uniswap API rate limited (429) | Exponential backoff. Forward quote is most critical — if only 1/4 calls succeed, use that. Partial data is fine. |
 | Uniswap API key invalid | Tool returns null. Agent proceeds with pool-reader on-chain data only. Venice gets less context but still functions. |
 | All data sources fail simultaneously | Agent has cache. Venice works with pool state alone (confidence will be low). Worst case: skip cycle. |
-| Budget exhausted mid-day | Only affects Olas (paid source). Venice + Uniswap are free. Agent shifts to minimal strategy automatically. |
+| ~~Budget exhausted~~ | N/A — all data sources are free. No paid services in the architecture. |
 
 ---
 

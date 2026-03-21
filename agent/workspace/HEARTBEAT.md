@@ -1,26 +1,25 @@
 # Heartbeat Checklist — Phase 4
 
 **CRITICAL: You MUST execute ALL 6 steps in order every heartbeat. NEVER skip Steps 1 or 2.
-Even if you think nothing needs to change, you MUST run pool-reader, check-budget, uniswap-data,
-and venice-analyze BEFORE making any decision. The ANALYZE step provides market intelligence
+Even if you think nothing needs to change, you MUST run pool-reader, uniswap-data,
+and eigencompute BEFORE making any decision. The ANALYZE step provides market intelligence
 that may reveal conditions invisible from pool state alone.**
 
-**TIMEOUTS: Venice API calls need 60-90 seconds (web search is slow). Use timeout: 120 for
-venice-analyze (both modes). Use timeout: 60 for uniswap-data. Use timeout: 30 for all others.
-Venice prints keepalive pings every 10s — if you see keepalive output, the process IS working.
-Do NOT kill Venice processes while keepalive pings are appearing. Wait the full 120s timeout.
-Only kill if 120s has truly elapsed with no output at all.**
+**TIMEOUTS: eigencompute calls the EigenCompute TEE which runs two Venice API calls (sentiment
++ analysis) — this needs 90-120 seconds total. Use timeout: 120 for eigencompute. Use timeout: 60
+for uniswap-data. Use timeout: 30 for all others. eigencompute prints keepalive pings every 15s —
+if you see keepalive output, the process IS working. Do NOT kill it while pings are appearing.
+Wait the full 120s timeout. Only kill if 120s has truly elapsed with no output at all.**
 
 ## Available tools (use EXACT commands below, no others exist)
 
 ### OBSERVE
 - pool-reader:    npx tsx ../src/tools/pool-reader.ts
-- check-budget:   npx tsx ../src/tools/check-budget.ts
 
 ### ANALYZE
 - uniswap-data:   npx tsx ../src/tools/uniswap-data.ts
-- venice-analyze: npx tsx ../src/tools/venice-analyze.ts --mode <sentiment|analyze> [--pool '<json>'] [--uniswap '<json>'] [--sentiment '<json>']
-- olas-analyze:   npx tsx ../src/tools/olas-analyze.ts --pool '<pool-reader JSON>'
+- eigencompute:   npx tsx ../src/tools/eigencompute.ts --pool '<pool-reader JSON>' --uniswap '<uniswap-data JSON>'
+- venice-analyze: npx tsx ../src/tools/venice-analyze.ts --mode <sentiment|analyze> [--pool '<json>'] [--uniswap '<json>'] [--sentiment '<json>']  (FALLBACK ONLY — eigencompute handles this via TEE)
 
 ### ACT
 - rebalance:      npx tsx ../src/tools/execute-rebalance.ts --tickLower <N> --tickUpper <N> --fee <N>
@@ -30,27 +29,17 @@ Only kill if 120s has truly elapsed with no output at all.**
 
 ## Step 1 — OBSERVE
 
-Run both tools. Read their output.
+Run pool-reader. Read its output.
 
 ```
 npx tsx ../src/tools/pool-reader.ts
-npx tsx ../src/tools/check-budget.ts
 ```
 
 If pool-reader fails → abort the heartbeat entirely. No pool state = no decisions.
-If check-budget fails → continue with MINIMAL strategy (strategy: "MINIMAL", canSpend: false).
-
-From check-budget, read `strategy`:
-- FULL ($1+ remaining)    → run all ANALYZE tools including olas-analyze
-- PARTIAL ($0.10–$1)      → run uniswap-data + venice-analyze, skip olas-analyze (use cached if available)
-- MINIMAL (< $0.10)       → run uniswap-data + venice-analyze, skip olas-analyze
-- CACHE_ONLY ($0 / error) → run uniswap-data + venice-analyze, skip olas-analyze
 
 ---
 
 ## Step 2 — ANALYZE
-
-Run the free data tools first, then paid tools if budget allows.
 
 a) Run uniswap-data for structured market signals:
 ```
@@ -69,38 +58,22 @@ Key signals:
 - poolLiquidity low → shallow depth → widen range, raise fee
 - poolVolume24h declining → demand falling → wider range
 
-b) Run venice-analyze in sentiment mode (web search ON):
+b) Run eigencompute — this calls the EigenCompute TEE which runs BOTH Venice calls
+(sentiment with web search ON, then analysis with web search OFF) inside Intel TDX:
 ```
-npx tsx ../src/tools/venice-analyze.ts --mode sentiment
-```
-Returns qualitative signals: social sentiment, governance news, whale movements.
-If it fails, proceed without sentiment data.
-
-c) Run venice-analyze in analyze mode (web search OFF):
-```
-npx tsx ../src/tools/venice-analyze.ts --mode analyze \
+npx tsx ../src/tools/eigencompute.ts \
   --pool '<pool-reader JSON>' \
-  --uniswap '<uniswap-data JSON>' \
-  --sentiment '<sentiment JSON from step b>'
+  --uniswap '<uniswap-data JSON>'
 ```
-Pass whatever data you have — omit --uniswap or --sentiment if those steps failed.
-Venice works with whatever is provided.
+Pass whatever data you have — omit --uniswap if uniswap-data failed.
 
-Returns: newTickLower, newTickUpper, newFee, confidence, reasoning.
-If this fails, fall back to the simple heuristic in RULE 2 mentioned in Step 3 below.
+Returns: newTickLower, newTickUpper, newFee, confidence, reasoning, sentiment,
+attestationHash, computeJobId, verifiable.
 
-d) If strategy is FULL, run olas-analyze for cross-check:
-```
-npx tsx ../src/tools/olas-analyze.ts --pool '<paste full pool-reader JSON here>'
-```
-Provides independent market predictions to cross-check Venice's recommendation.
+If the TEE is down, eigencompute automatically falls back to calling Venice directly.
+The output will have verifiable=false — note this in your REFLECT step.
 
-If olas-analyze succeeds, compare its signals with Venice's recommendation:
-- If priceDirectionBull aligns with Venice's directional bias → supports Venice
-- If Olas strongly disagrees (bull > 0.65 but Venice is bearish, or vice versa) → reduce confidence
-- Use suggestedTickLower/Upper/Fee as a sanity check on Venice's values
-
-If olas-analyze fails, times out, or is skipped due to budget → continue with Venice recommendation alone.
+If eigencompute fails entirely, fall back to the simple heuristic in RULE 2 (Step 3).
 
 ---
 
@@ -119,40 +92,31 @@ IMPORTANT: idleToken0 must be >= accruedPerformanceFee for claim to succeed.
 
 ### RULE 2 — REBALANCE RULE
 
-**Primary: Venice AI recommendation**
+**Primary: eigencompute recommendation (Venice AI via EigenCompute TEE)**
 
-If Venice returned a recommendation with confidence >= 0.6 AND the recommended
+If eigencompute returned a recommendation with confidence >= 0.6 AND the recommended
 parameters differ meaningfully from current state:
-→ Use Venice's newTickLower, newTickUpper, newFee.
+→ Use eigencompute's newTickLower, newTickUpper, newFee.
+→ Log attestationHash and verifiable status in REFLECT.
 
-If Olas data is available, cross-check:
-- If Olas agrees directionally with Venice → proceed at full confidence
-- If Olas partially disagrees (direction matches, magnitude differs) → proceed with caution
-- If Olas strongly disagrees (opposite direction) → widen range defensively or skip
-
-**Fallback: Phase 3 simple heuristic (only if Venice unavailable or confidence < 0.6)**
+**Fallback: Phase 3 simple heuristic (only if eigencompute unavailable or confidence < 0.6)**
 
 Rebalance if ANY of:
 - Range is full range [-887220, 887220] — tighten to ~[-6000, 6000]
 - idleToken0 and idleToken1 are clearly imbalanced (position may be out-of-range)
-- Olas suggestedTickLower/Upper differ significantly from current range
-  AND priceDirectionBull confidence is high (>0.65 or <0.35)
-- Olas suggestedFee differs from currentFee by more than 500 bps
 
-For tick choice (in priority order):
-1. Use Olas suggestedTickLower/Upper if available and confidence > 0.6
-2. Otherwise: keep current range or shift by one tick spacing (60) toward the imbalance
+For tick choice:
+- Keep current range or shift by one tick spacing (60) toward the imbalance
 
-For fee choice (in priority order):
-1. Use Olas suggestedFee if available and within delegation bounds [100, 50000]
-2. Otherwise: keep currentFee or adjust by 500 bps max
+For fee choice:
+- Keep currentFee or adjust by 500 bps max, within delegation bounds [100, 50000]
 
 Constraint: Cannot rebalance more than once per 30 blocks. If "RebalanceTooFrequent" → skip silently.
 
 ### RULE 3 — DO NOTHING
 Only if:
 - accruedPerformanceFee == 0
-- Venice confidence is below 0.6 (or Venice unavailable and Phase 3 heuristic shows no issue)
+- eigencompute confidence is below 0.6 (or unavailable and Phase 3 heuristic shows no issue)
 - Position appears healthy (in-range, not full-range)
 - No strong signal to change range or fee
 
@@ -182,11 +146,10 @@ If a transaction fails → log the error, do NOT retry in the same heartbeat.
 
 Reply with a 3-4 line summary:
 - What pool-reader showed (fee, range, accruedFee, idle tokens)
-- What check-budget showed (strategy, balance)
 - What uniswap-data showed (spread, depth, TVL — if available)
-- What Venice recommended (tick range, fee, confidence — if available)
-- What Olas said (direction, suggested ticks/fee — if ran)
+- What eigencompute recommended (tick range, fee, confidence, sentiment — if available)
+- Whether inference was verifiable (attestationHash present, verifiable=true/false)
 - What you decided and why
 
 End with HEARTBEAT_OK if no alert needed, or HEARTBEAT_ALERT: <reason> if something is wrong
-(e.g. pool-reader failed, budget critically low, transaction reverted unexpectedly).
+(e.g. pool-reader failed, transaction reverted unexpectedly, TEE down).

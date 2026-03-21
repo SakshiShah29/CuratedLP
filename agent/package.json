@@ -9,7 +9,9 @@
     "check-budget": "npx tsx src/tools/check-budget.ts",
     "olas-analyze": "npx tsx src/tools/olas-analyze.ts",
     "claim-fees": "npx tsx src/tools/claim-fees.ts",
-    "rebalance": "npx tsx src/tools/execute-rebalance.ts"
+    "rebalance": "npx tsx src/tools/execute-rebalance.ts",
+    "eigencompute": "npx tsx src/tools/eigencompute.ts",
+    "eigencompute-server": "npx tsx src/eigencompute-server.ts"
   },
   "keywords": [],
   "author": "",

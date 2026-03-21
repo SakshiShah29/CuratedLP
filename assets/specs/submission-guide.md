@@ -1,6 +1,6 @@
 # CuratedLP — Synthesis Hackathon Submission Guide
 
-*Last updated: 2026-03-20*
+*Last updated: 2026-03-21*
 
 ---
 
@@ -39,17 +39,14 @@ Browse available tracks and collect their `uuid` values. CuratedLP fits the foll
 
 | Track | Sponsor | Prize (1st) | Why We Fit |
 |---|---|---|---|
-| Agentic Finance (Best Uniswap API Integration) | Uniswap | $2,500 | Core infra — v4 hook, PoolManager, concentrated liquidity |
-| Best Use of Delegations | MetaMask | $3,000 | 2-hop sub-delegation chain, custom CaveatEnforcer |
-| Agents With Receipts — ERC-8004 | Protocol Labs | $2,000 | ERC-8004 identity NFT for curator registration + reputation |
-| Best Use of Locus | Locus | $2,000 | ERC-4337 wallet as agent trigger + data spending |
-| Autonomous Trading Agent | Base | $1,667 | Autonomous LP management on Base with novel strategy |
-| Agent Services on Base | Base | $1,667 | Curator's Venice-powered market analysis exposed as x402-paid service via AgentCash |
-| Let the Agent Cook | Protocol Labs | $2,000 | Full decision loop: observe → reason → decide → act → reflect |
-| Private Agents, Trusted Actions | Venice | $5,750 | Venice AI powers the reasoning/analysis layer |
-| Hire an Agent on Olas Marketplace | Olas | $500 | Agent hires Olas agent (`olas-analyze`) for market data analysis in decision loop |
-| Monetize Your Agent on Olas Marketplace | Olas | $500 | CuratedLP curator listed as hireable LP management service on Olas Marketplace |
-| Best Self Agent ID Integration | Self | $1,000 | ZK-powered agent identity (if integrated) |
+| Private Agents, Trusted Actions | Venice | $5,750 | Venice AI two-call pipeline (sentiment + analysis) powers all recommendations |
+| Best Use of Delegations | MetaMask | $3,000 | 2-hop sub-delegation chain, custom CaveatEnforcer, scoped permissions |
+| Best Use of EigenCompute | EigenCloud | $3,000 | Both Venice calls wrapped in TEE, verifiable attestation on every recommendation |
+| Agentic Finance (Best Uniswap API Integration) | Uniswap | $2,500 | Core infra — v4 hook, PoolManager, 4 API calls/cycle (1,152+/day), DeFiLlama analytics |
+| Agents With Receipts — ERC-8004 | Protocol Labs | $2,000 | ERC-8004 identity NFT for curator registration + ReputationRegistry writes after each rebalance |
+| Let the Agent Cook | Protocol Labs | $2,000 | Full decision loop: observe → reason → decide → act → reflect, multi-tool orchestration |
+| Best Use Case with Agentic Storage | Filecoin | $1,000 | Agent execution logs + Venice reasoning + EigenCompute attestations stored on Filecoin (RFS-2) |
+| ENS Identity | ENS | $400 | Agent registered with ENS name, frontend resolves ENS for curator identity |
 | Synthesis Open Track | Community | $28,309 | Open to all |
 
 ---
@@ -85,13 +82,15 @@ Authorization: Bearer <apiKey>
     ],
     "tools": [
       "Uniswap v4 PoolManager + Hooks",
+      "Uniswap Trading API (4 calls/cycle: forward, reverse, large quote, check_approval)",
       "MetaMask Delegation Framework (DeleGator, DelegationManager, CaveatEnforcer)",
-      "ERC-8004 Identity Registry",
-      "Locus ERC-4337 Smart Wallet",
-      "Venice AI API",
+      "ERC-8004 Identity + Reputation Registries",
+      "Venice AI API (two-call pipeline: sentiment + analysis)",
+      "EigenCompute TEE (verifiable Venice inference)",
+      "DeFiLlama API (TVL, yields, protocol flows)",
+      "Filecoin Onchain Cloud (execution log storage)",
+      "ENS (agent identity naming)",
       "OpenClaw Agent Runtime",
-      "Olas Marketplace (olas-analyze agent for market data)",
-      "AgentCash (x402 micropayments for agent services)",
       "Foundry (forge, anvil)",
       "viem / wagmi"
     ],

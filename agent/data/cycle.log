@@ -19,3 +19,47 @@
 {"ts":"2026-03-20T20:53:36.852Z","level":"info","msg":"check-budget: fetching Locus wallet balance"}
 {"ts":"2026-03-20T20:53:38.294Z","level":"debug","msg":"check-budget: raw balance response","data":{"wallet_address":"0x682d2ea400042a32c587c2845554d5f214fab109","chain":"base","usdc_balance":"0.0","allowance":10,"max_transaction_size":null}}
 {"ts":"2026-03-20T20:53:38.295Z","level":"info","msg":"check-budget: done","balance":0,"strategy":"CACHE_ONLY"}
+{"ts":"2026-03-20T22:29:16.237Z","level":"info","msg":"check-budget: fetching Locus wallet balance"}
+{"ts":"2026-03-20T22:29:23.361Z","level":"debug","msg":"check-budget: raw balance response","data":{"wallet_address":"0x9ba4fb4a74ac48f20e51f59d490ddc5864e69e06","chain":"base","usdc_balance":"3.0","allowance":10,"max_transaction_size":null}}
+{"ts":"2026-03-20T22:29:23.361Z","level":"info","msg":"check-budget: done","balance":0,"strategy":"CACHE_ONLY"}
+{"ts":"2026-03-20T22:31:24.616Z","level":"info","msg":"check-budget: fetching Locus wallet balance"}
+{"ts":"2026-03-20T22:31:25.914Z","level":"debug","msg":"check-budget: raw balance response","data":{"wallet_address":"0x9ba4fb4a74ac48f20e51f59d490ddc5864e69e06","chain":"base","usdc_balance":"3.0","allowance":10,"max_transaction_size":null}}
+{"ts":"2026-03-20T22:31:25.914Z","level":"info","msg":"check-budget: done","balance":0,"strategy":"CACHE_ONLY"}
+{"ts":"2026-03-20T22:34:07.498Z","level":"info","msg":"check-budget: fetching Locus wallet balance"}
+{"ts":"2026-03-20T22:34:08.745Z","level":"debug","msg":"check-budget: raw balance response","data":{"wallet_address":"0x9ba4fb4a74ac48f20e51f59d490ddc5864e69e06","chain":"base","usdc_balance":"3.0","allowance":10,"max_transaction_size":null}}
+{"ts":"2026-03-20T22:34:08.745Z","level":"info","msg":"check-budget: done","balance":0,"strategy":"CACHE_ONLY"}
+{"ts":"2026-03-20T22:36:52.238Z","level":"info","msg":"check-budget: fetching Locus wallet balance"}
+{"ts":"2026-03-20T22:36:53.434Z","level":"debug","msg":"check-budget: raw balance response","data":{"wallet_address":"0x9ba4fb4a74ac48f20e51f59d490ddc5864e69e06","chain":"base","usdc_balance":"3.0","allowance":10,"max_transaction_size":null}}
+{"ts":"2026-03-20T22:36:53.434Z","level":"info","msg":"check-budget: done","balance":0,"strategy":"CACHE_ONLY"}
+{"ts":"2026-03-20T22:39:21.829Z","level":"info","msg":"check-budget: fetching Locus wallet balance"}
+{"ts":"2026-03-20T22:39:22.994Z","level":"debug","msg":"check-budget: raw balance response","data":{"wallet_address":"0x9ba4fb4a74ac48f20e51f59d490ddc5864e69e06","chain":"base","usdc_balance":"3.0","allowance":10,"max_transaction_size":null}}
+{"ts":"2026-03-20T22:39:22.995Z","level":"info","msg":"check-budget: done","balance":0,"strategy":"CACHE_ONLY"}
+{"ts":"2026-03-20T22:40:26.827Z","level":"info","msg":"check-budget: fetching Locus wallet balance"}
+{"ts":"2026-03-20T22:40:28.339Z","level":"debug","msg":"check-budget: raw balance response","data":{"wallet_address":"0x9ba4fb4a74ac48f20e51f59d490ddc5864e69e06","chain":"base","usdc_balance":"3.0","allowance":10,"max_transaction_size":null}}
+{"ts":"2026-03-20T22:40:28.339Z","level":"debug","msg":"check-budget: computed budget status","balance":0,"dailySpend":0,"remainingToday":3,"strategy":"CACHE_ONLY"}
+{"ts":"2026-03-20T22:40:28.340Z","level":"info","msg":"check-budget: done","balance":0,"strategy":"CACHE_ONLY"}
+{"ts":"2026-03-20T22:42:00.708Z","level":"info","msg":"check-budget: fetching Locus wallet balance"}
+{"ts":"2026-03-20T22:42:02.198Z","level":"debug","msg":"check-budget: raw balance response","data":{"wallet_address":"0x9ba4fb4a74ac48f20e51f59d490ddc5864e69e06","chain":"base","usdc_balance":"3.0","allowance":10,"max_transaction_size":null}}
+{"ts":"2026-03-20T22:42:02.198Z","level":"debug","msg":"check-budget: computed budget status","balance":0,"dailySpend":0,"remainingToday":3,"strategy":"CACHE_ONLY"}
+{"ts":"2026-03-20T22:42:02.199Z","level":"info","msg":"check-budget: done","balance":0,"strategy":"CACHE_ONLY"}
+{"ts":"2026-03-20T22:43:13.065Z","level":"info","msg":"check-budget: fetching Locus wallet balance"}
+{"ts":"2026-03-20T22:43:15.279Z","level":"debug","msg":"check-budget: raw balance response","usdc_balance":"3.0"}
+{"ts":"2026-03-20T22:43:15.279Z","level":"debug","msg":"check-budget: computed budget status","balance":0,"dailySpend":0,"remainingToday":3,"strategy":"CACHE_ONLY"}
+{"ts":"2026-03-20T22:43:15.279Z","level":"info","msg":"check-budget: done","balance":0,"strategy":"CACHE_ONLY"}
+{"ts":"2026-03-20T22:44:40.596Z","level":"info","msg":"check-budget: fetching Locus wallet balance"}
+{"ts":"2026-03-20T22:44:42.402Z","level":"debug","msg":"check-budget: raw balance response","usdc_balance":"3.0"}
+{"ts":"2026-03-20T22:44:42.402Z","level":"debug","msg":"check-budget: computed budget status","balance":0,"dailySpend":0,"remainingToday":3,"strategy":"CACHE_ONLY"}
+{"ts":"2026-03-20T22:44:42.403Z","level":"info","msg":"check-budget: done","balance":0,"strategy":"CACHE_ONLY"}
+{"ts":"2026-03-20T22:44:48.808Z","level":"info","msg":"check-budget: fetching Locus wallet balance"}
+{"ts":"2026-03-20T22:44:50.258Z","level":"debug","msg":"check-budget: raw balance response","usdc_balance":"3.0"}
+{"ts":"2026-03-20T22:44:50.259Z","level":"debug","msg":"check-budget: computed budget status","balance":3,"dailySpend":0,"remainingToday":3,"strategy":"FULL"}
+{"ts":"2026-03-20T22:44:50.259Z","level":"info","msg":"check-budget: done","balance":3,"strategy":"FULL"}
+{"ts":"2026-03-20T22:45:45.442Z","level":"info","msg":"check-budget: fetching Locus wallet balance"}
+{"ts":"2026-03-20T22:45:46.812Z","level":"debug","msg":"check-budget: raw balance response","data":{"wallet_address":"0x9ba4fb4a74ac48f20e51f59d490ddc5864e69e06","chain":"base","usdc_balance":"3.0","allowance":10,"max_transaction_size":null}}
+{"ts":"2026-03-20T22:45:46.813Z","level":"info","msg":"check-budget: done","balance":3,"strategy":"FULL"}
+{"ts":"2026-03-20T22:47:39.377Z","level":"info","msg":"check-budget: fetching Locus wallet balance"}
+{"ts":"2026-03-20T22:47:41.315Z","level":"debug","msg":"check-budget: raw balance response","data":{"wallet_address":"0x9ba4fb4a74ac48f20e51f59d490ddc5864e69e06","chain":"base","usdc_balance":"3.0","allowance":10,"max_transaction_size":null}}
+{"ts":"2026-03-20T22:47:41.316Z","level":"info","msg":"check-budget: done","balance":3,"strategy":"FULL"}
+{"ts":"2026-03-20T22:50:28.185Z","level":"info","msg":"check-budget: fetching Locus wallet balance"}
+{"ts":"2026-03-20T22:50:29.805Z","level":"debug","msg":"check-budget: raw balance response","data":{"wallet_address":"0x9ba4fb4a74ac48f20e51f59d490ddc5864e69e06","chain":"base","usdc_balance":"3.0","allowance":10,"max_transaction_size":null}}
+{"ts":"2026-03-20T22:50:29.806Z","level":"info","msg":"check-budget: done","balance":3,"strategy":"FULL"}
