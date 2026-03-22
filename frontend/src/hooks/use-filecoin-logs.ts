@@ -79,8 +79,8 @@ const RPC_TIMEOUT = 15_000; // 15s timeout for Filecoin RPC calls
 const filecoinClient = createPublicClient({
   chain: {
     id: FILECOIN_CALIBRATION_CHAIN_ID,
-    name: "Filecoin Calibration",
-    nativeCurrency: { name: "tFIL", symbol: "tFIL", decimals: 18 },
+    name: "Filecoin Mainnet",
+    nativeCurrency: { name: "FIL", symbol: "FIL", decimals: 18 },
     rpcUrls: { default: { http: [FILECOIN_RPC] } },
   },
   transport: http(FILECOIN_RPC, { timeout: RPC_TIMEOUT }),

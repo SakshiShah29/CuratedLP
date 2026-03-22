@@ -11,8 +11,8 @@ export const BASENAMES_L2_RESOLVER = "0x6533C94869D28fAA8dF77cc63f9e2b2D6Cf77eBA
 export const BASENAMES_REVERSE_REGISTRAR = "0x876eF94ce0773052a2f81921E70FF25a5e76841f" as const;
 
 // Filecoin (FEVM) — LogRegistry for execution log CID index
-export const FILECOIN_CALIBRATION_CHAIN_ID = 314159;
-export const FILECOIN_RPC = "https://api.calibration.node.glif.io/rpc/v1";
+export const FILECOIN_CALIBRATION_CHAIN_ID = 314;
+export const FILECOIN_RPC = "https://api.node.glif.io/rpc/v1";
 export const LOG_REGISTRY_ADDRESS = "0x589f9FE40Fecc9DF505937A3e8CABac2Ab3B42E2" as const;
 export const AGENT_ID = 2200n;
 export const IPFS_GATEWAYS = [
