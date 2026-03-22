@@ -32,33 +32,33 @@ export function ReputationFeed({ curator, cumulativeFeeRevenue, totalSwaps, reba
 
       <div className="space-y-4 relative z-10">
         <div className="flex items-center justify-between p-3 bg-[#0a0a0a] rounded-lg border border-[#2a2a2a] hover:border-[#4ade80]/20 transition-colors">
-          <span className="text-[#888] text-sm">Rebalance count</span>
+          <span className="text-[#aaa] text-sm">Rebalance count</span>
           <span className="text-[#4ade80] font-mono font-medium">{rebalanceCount}</span>
         </div>
 
         <div className="flex items-center justify-between p-3 bg-[#0a0a0a] rounded-lg border border-[#2a2a2a] hover:border-[#4ade80]/20 transition-colors">
-          <span className="text-[#888] text-sm">Avg fee revenue</span>
+          <span className="text-[#aaa] text-sm">Avg fee revenue</span>
           <span className="text-white font-mono">
             {feePerCycle > 0 ? `${feePerCycle.toFixed(6)} ETH/cycle` : "—"}
           </span>
         </div>
 
         <div className="flex items-center justify-between p-3 bg-[#0a0a0a] rounded-lg border border-[#2a2a2a] hover:border-[#4ade80]/20 transition-colors">
-          <span className="text-[#888] text-sm">Total swaps tracked</span>
+          <span className="text-[#aaa] text-sm">Total swaps tracked</span>
           <span className="text-[#4ade80] font-mono font-medium">
             {totalSwaps?.toString() ?? "0"}
           </span>
         </div>
 
         <div className="flex items-center justify-between p-3 bg-[#0a0a0a] rounded-lg border border-[#2a2a2a] hover:border-[#4ade80]/20 transition-colors">
-          <span className="text-[#888] text-sm">Basename</span>
-          <span className={`font-mono text-sm ${basename ? "text-[#4ade80]" : "text-[#888]"}`}>
+          <span className="text-[#aaa] text-sm">Basename</span>
+          <span className={`font-mono text-sm ${basename ? "text-[#4ade80]" : "text-[#aaa]"}`}>
             {basename ?? "—"}
           </span>
         </div>
 
         <div className="flex items-center justify-between p-3 bg-[#0a0a0a] rounded-lg border border-[#2a2a2a] hover:border-[#4ade80]/20 transition-colors">
-          <span className="text-[#888] text-sm">ERC-8004 Identity</span>
+          <span className="text-[#aaa] text-sm">ERC-8004 Identity</span>
           <div className="flex items-center gap-1">
             <CheckCircle className="w-3 h-3 text-[#4ade80]" />
             <span className="text-white font-mono">
@@ -75,7 +75,7 @@ export function ReputationFeed({ curator, cumulativeFeeRevenue, totalSwaps, reba
             className="flex items-center justify-between p-3 bg-[#4ade80]/5 rounded-lg border border-[#4ade80]/20 hover:border-[#4ade80]/40 transition-colors group"
           >
             <div>
-              <p className="text-[#888] text-xs">Registry</p>
+              <p className="text-[#aaa] text-xs">Registry</p>
               <p className="text-[#4ade80] font-mono text-sm">
                 {REPUTATION_REGISTRY.slice(0, 10)}...
               </p>

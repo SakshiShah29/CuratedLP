@@ -86,7 +86,7 @@ export function TokensSection({
         style={{ background: "radial-gradient(ellipse at 50% 0%, rgba(74, 222, 128, 0.12) 0%, transparent 50%), #141414" }}
       >
         <h2 className="text-white text-lg font-semibold mb-5">Your Position</h2>
-        <p className="text-[#666] text-sm text-center py-8">
+        <p className="text-[#999] text-sm text-center py-8">
           Connect wallet to view your position
         </p>
       </div>
@@ -97,7 +97,7 @@ export function TokensSection({
     <div className="bg-[#111111] rounded-2xl p-5 border border-[#2a2a2a]">
       <div className="flex items-center justify-between mb-5">
         <h2 className="text-white text-lg font-semibold">Your Position</h2>
-        <button className="text-[#666] hover:text-white transition-colors">
+        <button className="text-[#999] hover:text-white transition-colors">
           <MoreHorizontal className="w-5 h-5" />
         </button>
       </div>
@@ -110,7 +110,7 @@ export function TokensSection({
             className={`px-4 py-2 rounded-lg text-sm transition-colors ${
               activeFilter === filter
                 ? "bg-[#4ade80] text-black font-medium"
-                : "bg-[#1a1a1a] text-[#888] hover:text-white"
+                : "bg-[#1a1a1a] text-[#aaa] hover:text-white"
             }`}
           >
             {filter}
@@ -131,7 +131,7 @@ export function TokensSection({
                   <span className="text-white font-semibold font-mono">{token.amount}</span>
                   <span className="text-white text-sm">{token.symbol}</span>
                 </div>
-                <p className="text-[#666] text-sm">{token.subtitle}</p>
+                <p className="text-[#999] text-sm">{token.subtitle}</p>
               </div>
             </div>
             {activeFilter === "Wallet" ? (

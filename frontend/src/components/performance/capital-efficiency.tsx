@@ -31,23 +31,23 @@ export function CapitalEfficiency({
 
       {/* Score */}
       <div className="bg-[#1a1a1a] rounded-xl p-4 mb-4">
-        <p className="text-[#666] text-xs mb-1">Efficiency Score</p>
+        <p className="text-[#999] text-xs mb-1">Efficiency Score</p>
         <p className="text-[#4ade80] font-mono font-semibold text-3xl">
           {isLoading ? "..." : formatLargeNumber(capitalEfficiency)}
         </p>
-        <p className="text-[#666] text-[10px] mt-1">liquidity / √(token0 × token1)</p>
+        <p className="text-[#999] text-[10px] mt-1">liquidity / √(token0 × token1)</p>
       </div>
 
       {/* Volume breakdown */}
       <div className="grid grid-cols-2 gap-3 mb-3">
         <div className="bg-[#1a1a1a] rounded-xl p-3">
-          <p className="text-[#666] text-xs">24h Volume</p>
+          <p className="text-[#999] text-xs">24h Volume</p>
           <p className="text-white font-mono font-semibold">
             {isLoading ? "..." : formatTokenAmount(volume24h)}
           </p>
         </div>
         <div className="bg-[#1a1a1a] rounded-xl p-3">
-          <p className="text-[#666] text-xs">7d Volume</p>
+          <p className="text-[#999] text-xs">7d Volume</p>
           <p className="text-white font-mono font-semibold">
             {isLoading ? "..." : formatTokenAmount(volume7d)}
           </p>
@@ -57,13 +57,13 @@ export function CapitalEfficiency({
       {/* Fee breakdown */}
       <div className="grid grid-cols-2 gap-3">
         <div className="bg-[#1a1a1a] rounded-xl p-3">
-          <p className="text-[#666] text-xs">24h Fees</p>
+          <p className="text-[#999] text-xs">24h Fees</p>
           <p className="text-[#4ade80] font-mono font-semibold">
             {isLoading ? "..." : formatTokenAmount(fees24h)}
           </p>
         </div>
         <div className="bg-[#1a1a1a] rounded-xl p-3">
-          <p className="text-[#666] text-xs">7d Fees</p>
+          <p className="text-[#999] text-xs">7d Fees</p>
           <p className="text-[#4ade80] font-mono font-semibold">
             {isLoading ? "..." : formatTokenAmount(fees7d)}
           </p>

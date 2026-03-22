@@ -183,7 +183,7 @@ export function DepositForm({
         />
 
         <div className="flex justify-center">
-          <div className="w-8 h-8 rounded-full bg-[#1a1a1a] border border-[#2a2a2a] flex items-center justify-center text-[#666] text-xs font-mono">+</div>
+          <div className="w-8 h-8 rounded-full bg-[#1a1a1a] border border-[#2a2a2a] flex items-center justify-center text-[#999] text-xs font-mono">+</div>
         </div>
 
         {/* Token 1 input */}
@@ -243,14 +243,14 @@ export function DepositForm({
 
         {estimatedShares && (
           <div className="flex items-center justify-between px-3 py-2.5 rounded-xl bg-[#1a1a1a] border border-[#2a2a2a]">
-            <span className="text-[#666] text-xs">You will receive</span>
+            <span className="text-[#999] text-xs">You will receive</span>
             <span className="text-[#4ade80] text-sm font-mono font-medium">~{estimatedShares} cvLP</span>
           </div>
         )}
 
         {/* Ratio info when vault has assets */}
         {totalAssets && totalAssets[0] > 0n && totalAssets[1] > 0n && hasAmount && (
-          <p className="text-xs text-[#666] px-1">Amounts auto-calculated to match pool ratio</p>
+          <p className="text-xs text-[#999] px-1">Amounts auto-calculated to match pool ratio</p>
         )}
 
         <Button

@@ -30,11 +30,11 @@ export function APYComparison({
             </div>
             <div>
               <p className="text-white text-sm font-medium">Vault APY</p>
-              <p className="text-[#888] text-xs">AI-managed</p>
+              <p className="text-[#aaa] text-xs">AI-managed</p>
             </div>
           </div>
           <button className="p-1.5 hover:bg-[#2a2a2a] rounded-lg transition-colors">
-            <MoreHorizontal className="w-4 h-4 text-[#888]" />
+            <MoreHorizontal className="w-4 h-4 text-[#aaa]" />
           </button>
         </div>
         <p className="text-[#4ade80] text-4xl font-medium font-mono">
@@ -53,11 +53,11 @@ export function APYComparison({
             </div>
             <div>
               <p className="text-white text-sm font-medium">Passive LP</p>
-              <p className="text-[#888] text-xs">Benchmark</p>
+              <p className="text-[#aaa] text-xs">Benchmark</p>
             </div>
           </div>
           <button className="p-1.5 hover:bg-[#2a2a2a] rounded-lg transition-colors">
-            <MoreHorizontal className="w-4 h-4 text-[#888]" />
+            <MoreHorizontal className="w-4 h-4 text-[#aaa]" />
           </button>
         </div>
         <p className="text-[#4ade80] text-4xl font-medium font-mono">
@@ -80,7 +80,7 @@ export function APYComparison({
             </div>
           </div>
           <button className="p-1.5 hover:bg-[#2a2a2a] rounded-lg transition-colors">
-            <MoreHorizontal className="w-4 h-4 text-[#888]" />
+            <MoreHorizontal className="w-4 h-4 text-[#aaa]" />
           </button>
         </div>
         <p className="text-[#4ade80] text-4xl font-medium font-mono">

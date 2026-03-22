@@ -1,0 +1,266 @@
+[
+  {
+    "timestamp": "2026-03-21T16:44:56.485Z",
+    "action": "CLAIMED",
+    "summary": "Claimed accrued performance fees",
+    "txHash": "0x6a3197bde2343dba5e07acfefe493462213c58e6c84c02e8983557b9dfe1f45a"
+  },
+  {
+    "timestamp": "2026-03-21T16:50:30.880Z",
+    "action": "CLAIMED",
+    "summary": "Claimed accrued performance fees",
+    "txHash": "0x08db9a27c0ce807170877c8f6ce2a613daa1367c8edcbd0014169ade0b5fe70a"
+  },
+  {
+    "timestamp": "2026-03-21T16:56:18.989Z",
+    "action": "CLAIMED",
+    "summary": "Claimed accrued performance fees",
+    "txHash": "0xc3b9b0676dfee602d9ee13a04b1e89380ea8d1073e8d872e1df9e8c723fd7cdb"
+  },
+  {
+    "timestamp": "2026-03-21T18:37:10.397Z",
+    "action": "CLAIMED",
+    "summary": "Claimed accrued performance fees",
+    "txHash": "0x00237d84f76f584c92588c791634ff1809bb6c59bb768c07f19b119af5d71b0f"
+  },
+  {
+    "timestamp": "2026-03-21T18:37:18.729Z",
+    "action": "REBALANCED",
+    "summary": "Rebalanced to [-1800, 1800] fee=5000",
+    "rebalance": {
+      "oldTickLower": 0,
+      "oldTickUpper": 0,
+      "newTickLower": -1800,
+      "newTickUpper": 1800,
+      "oldFee": 0,
+      "newFee": 5000
+    },
+    "txHash": "0xaae1686c334c8a1af6dacb34f613dec9bbebf61c8ba8c3518f7f10987a6ac274",
+    "serviceCounts": {
+      "venice": 1,
+      "eigenCompute": 1
+    }
+  },
+  {
+    "timestamp": "2026-03-21T18:39:48.956Z",
+    "action": "REBALANCED",
+    "summary": "Rebalanced to [-2400, 2400] fee=5000",
+    "rebalance": {
+      "oldTickLower": 0,
+      "oldTickUpper": 0,
+      "newTickLower": -2400,
+      "newTickUpper": 2400,
+      "oldFee": 0,
+      "newFee": 5000
+    },
+    "txHash": "0xbce3d5aea89fa82034bd543322c5ce2aa72efbc5648a246b4a55e9e489b50b71",
+    "serviceCounts": {
+      "venice": 1,
+      "eigenCompute": 1
+    }
+  },
+  {
+    "timestamp": "2026-03-21T18:40:58.767Z",
+    "action": "REBALANCED",
+    "summary": "Rebalanced to [-2400, 2400] fee=5000",
+    "rebalance": {
+      "oldTickLower": 0,
+      "oldTickUpper": 0,
+      "newTickLower": -2400,
+      "newTickUpper": 2400,
+      "oldFee": 0,
+      "newFee": 5000
+    },
+    "txHash": "0x0ffb61b7012a1124d45227ed4d81f1e781759ed4699e9a9e97a8f2b330215ac4",
+    "serviceCounts": {
+      "venice": 1,
+      "eigenCompute": 1
+    }
+  },
+  {
+    "timestamp": "2026-03-21T19:01:48.852Z",
+    "action": "REBALANCED",
+    "summary": "Rebalanced to [-2400, 2400] fee=3000",
+    "rebalance": {
+      "oldTickLower": 0,
+      "oldTickUpper": 0,
+      "newTickLower": -2400,
+      "newTickUpper": 2400,
+      "oldFee": 0,
+      "newFee": 3000
+    },
+    "txHash": "0x5040e2a5395896886ebbce44f65546a9d68a31176893a79539b680a8cf775420",
+    "serviceCounts": {
+      "venice": 1,
+      "eigenCompute": 1
+    }
+  },
+  {
+    "timestamp": "2026-03-21T19:10:43.245Z",
+    "action": "REBALANCED",
+    "summary": "Rebalanced to [-2700, 2100] fee=3000",
+    "rebalance": {
+      "oldTickLower": 0,
+      "oldTickUpper": 0,
+      "newTickLower": -2700,
+      "newTickUpper": 2100,
+      "oldFee": 0,
+      "newFee": 3000
+    },
+    "txHash": "0xf3f161295a7994fafd5f9910c41b7771a813791ec038c665a87dc33588f94421",
+    "serviceCounts": {
+      "venice": 1,
+      "eigenCompute": 1
+    }
+  },
+  {
+    "timestamp": "2026-03-21T19:11:41.319Z",
+    "action": "ERROR",
+    "summary": "Rebalance failed: The contract function \"redeemDelegations\" reverted with the following signature:\n0x4011a0ba\n\nUnable to decode signature ",
+    "error": "The contract function \"redeemDelegations\" reverted with the following signature:\n0x4011a0ba\n\nUnable to decode signature \"0x4011a0ba\" as it was not found on the provided ABI.\nMake sure you are using th"
+  },
+  {
+    "timestamp": "2026-03-21T19:14:56.760Z",
+    "action": "REBALANCED",
+    "summary": "Rebalanced to [-4200, 3600] fee=3000",
+    "rebalance": {
+      "oldTickLower": 0,
+      "oldTickUpper": 0,
+      "newTickLower": -4200,
+      "newTickUpper": 3600,
+      "oldFee": 0,
+      "newFee": 3000
+    },
+    "txHash": "0x716d5384730909f5789cad9fc48c452eb637048a53bc9f18343c64e9efae9ec3",
+    "serviceCounts": {
+      "venice": 1,
+      "eigenCompute": 1
+    }
+  },
+  {
+    "timestamp": "2026-03-21T19:20:50.822Z",
+    "action": "REBALANCED",
+    "summary": "Rebalanced to [-4800, 4200] fee=5000",
+    "rebalance": {
+      "oldTickLower": 0,
+      "oldTickUpper": 0,
+      "newTickLower": -4800,
+      "newTickUpper": 4200,
+      "oldFee": 0,
+      "newFee": 5000
+    },
+    "txHash": "0x86a72284469b45b859ed4a1fb064a871f34b9132312d39d52e1eb18aadd8a9ab",
+    "serviceCounts": {
+      "venice": 1,
+      "eigenCompute": 1
+    }
+  },
+  {
+    "timestamp": "2026-03-21T19:28:44.265Z",
+    "action": "REBALANCED",
+    "summary": "Rebalanced to [-5400, 4800] fee=6000",
+    "rebalance": {
+      "oldTickLower": 0,
+      "oldTickUpper": 0,
+      "newTickLower": -5400,
+      "newTickUpper": 4800,
+      "oldFee": 0,
+      "newFee": 6000
+    },
+    "txHash": "0xb379b9635b061c2fecc31b50a1c7649d87c804389ace6e54b7d5892a60c991a1",
+    "serviceCounts": {
+      "venice": 1,
+      "eigenCompute": 1
+    }
+  },
+  {
+    "timestamp": "2026-03-21T19:35:31.304Z",
+    "action": "REBALANCED",
+    "summary": "Rebalanced to [-6000, 5400] fee=8000",
+    "rebalance": {
+      "oldTickLower": 0,
+      "oldTickUpper": 0,
+      "newTickLower": -6000,
+      "newTickUpper": 5400,
+      "oldFee": 0,
+      "newFee": 8000
+    },
+    "txHash": "0x308e32909b004824bc0900bbc2b6e5926284fa2cc7c2dac2841d99d05ba40ddb",
+    "serviceCounts": {
+      "venice": 1,
+      "eigenCompute": 1
+    }
+  },
+  {
+    "timestamp": "2026-03-21T19:39:01.014Z",
+    "action": "REBALANCED",
+    "summary": "Rebalanced to [-7200, 6600] fee=8000",
+    "rebalance": {
+      "oldTickLower": 0,
+      "oldTickUpper": 0,
+      "newTickLower": -7200,
+      "newTickUpper": 6600,
+      "oldFee": 0,
+      "newFee": 8000
+    },
+    "txHash": "0x32e29f69bdfaab32f8687242f1513690dc2f2e7e997efe0335bdf1c997fad694",
+    "serviceCounts": {
+      "venice": 1,
+      "eigenCompute": 1
+    }
+  },
+  {
+    "timestamp": "2026-03-21T19:41:48.341Z",
+    "action": "REBALANCED",
+    "summary": "Rebalanced to [-7500, 7020] fee=5000",
+    "rebalance": {
+      "oldTickLower": 0,
+      "oldTickUpper": 0,
+      "newTickLower": -7500,
+      "newTickUpper": 7020,
+      "oldFee": 0,
+      "newFee": 5000
+    },
+    "txHash": "0x9b02f34732dffd9a6953d2881dc84a404ef72519c8e66ddd90a3bc59c7172f9e",
+    "serviceCounts": {
+      "venice": 1,
+      "eigenCompute": 1
+    }
+  },
+  {
+    "timestamp": "2026-03-21T20:05:08.432Z",
+    "action": "REBALANCED",
+    "summary": "Rebalanced to [-1200, 1200] fee=3000",
+    "rebalance": {
+      "oldTickLower": 0,
+      "oldTickUpper": 0,
+      "newTickLower": -1200,
+      "newTickUpper": 1200,
+      "oldFee": 0,
+      "newFee": 3000
+    },
+    "txHash": "0x982cf478dcaf795fd36f9f326ccc31506aa139bdd65e0f944973bdbd179d8d4c",
+    "serviceCounts": {
+      "venice": 1,
+      "eigenCompute": 1
+    }
+  },
+  {
+    "timestamp": "2026-03-21T20:11:14.731Z",
+    "action": "REBALANCED",
+    "summary": "Rebalanced to [-1200, 1200] fee=3000",
+    "rebalance": {
+      "oldTickLower": 0,
+      "oldTickUpper": 0,
+      "newTickLower": -1200,
+      "newTickUpper": 1200,
+      "oldFee": 0,
+      "newFee": 3000
+    },
+    "txHash": "0x74f0951fa429fda833b6f901ffebe0bccb4af13843121002d38cfe50fd069034",
+    "serviceCounts": {
+      "venice": 1,
+      "eigenCompute": 1
+    }
+  }
+]

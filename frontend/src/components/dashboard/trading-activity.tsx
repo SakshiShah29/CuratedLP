@@ -81,7 +81,7 @@ export function TradingActivity({
         <div className="flex-1 relative activity-grid">
           <div className="grid grid-cols-12 gap-1.5 mb-2">
             {bucketLabels.map((label) => (
-              <div key={label} className="text-[#666] text-xs text-center">
+              <div key={label} className="text-[#999] text-xs text-center">
                 {label}
               </div>
             ))}
@@ -90,7 +90,7 @@ export function TradingActivity({
           <div className="space-y-1.5">
             {categories.map((category, rowIndex) => (
               <div key={category} className="flex items-center gap-2">
-                <span className="text-[#666] text-xs w-20 truncate">{category}</span>
+                <span className="text-[#999] text-xs w-20 truncate">{category}</span>
                 <div className="flex-1 grid grid-cols-12 gap-1.5">
                   {activityData[rowIndex].map((level, colIndex) => (
                     <div
@@ -114,19 +114,19 @@ export function TradingActivity({
             <p className="text-white text-2xl font-semibold font-mono">
               {swaps.length}
             </p>
-            <p className="text-[#666] text-xs">Swaps</p>
+            <p className="text-[#999] text-xs">Swaps</p>
           </div>
           <div>
             <p className="text-white text-2xl font-semibold font-mono">
               {rebalances.length}
             </p>
-            <p className="text-[#666] text-xs">Rebalances</p>
+            <p className="text-[#999] text-xs">Rebalances</p>
           </div>
           <div>
             <p className="text-[#4ade80] text-2xl font-semibold font-mono">
               {totalEvents}
             </p>
-            <p className="text-[#666] text-xs">Total events</p>
+            <p className="text-[#999] text-xs">Total events</p>
           </div>
         </div>
       </div>

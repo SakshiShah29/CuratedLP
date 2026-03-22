@@ -3,24 +3,19 @@
 import { MoreHorizontal, Copy, ExternalLink, CheckCircle } from "lucide-react"
 import { useState } from "react"
 import { shortenAddress } from "@/lib/format"
-import { BASESCAN_URL, IDENTITY_REGISTRY, IPFS_GATEWAYS } from "@/lib/constants"
-import { useBasename } from "@/hooks/use-basename"
+import { BASESCAN_URL, IDENTITY_REGISTRY } from "@/lib/constants"
 import type { CuratorData } from "@/hooks/use-curator-data"
-import type { AgentCard } from "@/hooks/use-agent-metadata"
 
 interface AgentIdentityProps {
   curator?: CuratorData
   currentBlock?: bigint
   isLoading: boolean
   rebalanceCount?: number
-  agentCard?: AgentCard
-  tokenUri?: string
 }
 
-export function AgentIdentity({ curator, currentBlock, isLoading, rebalanceCount = 0, agentCard, tokenUri }: AgentIdentityProps) {
+export function AgentIdentity({ curator, currentBlock, isLoading, rebalanceCount = 0 }: AgentIdentityProps) {
   const [copied, setCopied] = useState(false)
   const [activeTab, setActiveTab] = useState("Identity")
-  const { basename } = useBasename(curator?.wallet)
   const tabs = ["Identity", "Delegation", "History"]
 
   const copyAddress = () => {
@@ -43,11 +38,6 @@ export function AgentIdentity({ curator, currentBlock, isLoading, rebalanceCount
       copyable: true,
     },
     {
-      label: "Basename",
-      value: basename ?? "Not set",
-      active: !!basename,
-    },
-    {
       label: "ERC-8004 ID",
       value: curator?.erc8004IdentityId ? `#${curator.erc8004IdentityId.toString()}` : "—",
       link: true,
@@ -62,28 +52,6 @@ export function AgentIdentity({ curator, currentBlock, isLoading, rebalanceCount
       value: curator?.performanceFeeBps ? `${Number(curator.performanceFeeBps) / 100}%` : "—",
       active: true,
     },
-    {
-      label: "Token URI",
-      value: tokenUri
-        ? tokenUri.startsWith("ipfs://")
-          ? `ipfs://${tokenUri.slice(7, 19)}...`
-          : tokenUri.slice(0, 24) + "..."
-        : "Not registered",
-      ipfsLink: tokenUri
-        ? tokenUri.startsWith("ipfs://")
-          ? `${IPFS_GATEWAYS[0]}${tokenUri.slice(7)}`
-          : tokenUri
-        : undefined,
-    },
-    ...(agentCard
-      ? [
-          {
-            label: "Agent Name",
-            value: agentCard.name,
-            active: true,
-          },
-        ]
-      : []),
   ]
 
   return (
@@ -104,11 +72,11 @@ export function AgentIdentity({ curator, currentBlock, isLoading, rebalanceCount
           <div>
             <h2 className="text-white text-lg font-semibold">Curator Agent</h2>
             <p className="text-[#4ade80] text-sm font-mono">
-              {basename ?? (curator?.wallet ? shortenAddress(curator.wallet) : "—")}
+              {curator?.wallet ? shortenAddress(curator.wallet) : "—"}
             </p>
           </div>
         </div>
-        <button className="text-[#666] hover:text-white transition-colors">
+        <button className="text-[#999] hover:text-white transition-colors">
           <MoreHorizontal className="w-5 h-5" />
         </button>
       </div>
@@ -121,7 +89,7 @@ export function AgentIdentity({ curator, currentBlock, isLoading, rebalanceCount
             className={`px-4 py-2 rounded-lg text-sm transition-colors ${
               activeTab === tab
                 ? "bg-[#4ade80] text-black font-medium"
-                : "bg-[#1a1a1a] text-[#888] hover:text-white"
+                : "bg-[#1a1a1a] text-[#aaa] hover:text-white"
             }`}
           >
             {tab}
@@ -138,7 +106,7 @@ export function AgentIdentity({ curator, currentBlock, isLoading, rebalanceCount
                 className="flex items-center justify-between bg-[#1a1a1a] rounded-xl p-4"
               >
                 <div>
-                  <p className="text-[#666] text-xs mb-1">{item.label}</p>
+                  <p className="text-[#999] text-xs mb-1">{item.label}</p>
                   <div className="flex items-center gap-2">
                     {item.verified && <CheckCircle className="w-3.5 h-3.5 text-[#4ade80]" />}
                     <span className={`font-mono text-sm ${item.active || item.verified ? "text-[#4ade80]" : "text-white"}`}>
@@ -154,7 +122,7 @@ export function AgentIdentity({ curator, currentBlock, isLoading, rebalanceCount
                     {copied ? (
                       <CheckCircle className="w-4 h-4 text-[#4ade80]" />
                     ) : (
-                      <Copy className="w-4 h-4 text-[#888]" />
+                      <Copy className="w-4 h-4 text-[#aaa]" />
                     )}
                   </button>
                 )}
@@ -165,17 +133,7 @@ export function AgentIdentity({ curator, currentBlock, isLoading, rebalanceCount
                     rel="noopener noreferrer"
                     className="p-2 bg-[#0a0a0a] border border-[#333] rounded-lg hover:bg-[#1a1a1a] transition-colors"
                   >
-                    <ExternalLink className="w-4 h-4 text-[#888]" />
-                  </a>
-                )}
-                {"ipfsLink" in item && item.ipfsLink && (
-                  <a
-                    href={item.ipfsLink}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="p-2 bg-[#0a0a0a] border border-[#333] rounded-lg hover:bg-[#1a1a1a] transition-colors"
-                  >
-                    <ExternalLink className="w-4 h-4 text-[#888]" />
+                    <ExternalLink className="w-4 h-4 text-[#aaa]" />
                   </a>
                 )}
               </div>
@@ -184,17 +142,17 @@ export function AgentIdentity({ curator, currentBlock, isLoading, rebalanceCount
 
           <div className="mt-4 bg-[#1a1a1a] rounded-xl p-4">
             <div className="flex items-center justify-between mb-3">
-              <p className="text-[#666] text-xs">Rebalance Stats</p>
+              <p className="text-[#999] text-xs">Rebalance Stats</p>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <p className="text-[#666] text-xs mb-1">Total rebalances</p>
+                <p className="text-[#999] text-xs mb-1">Total rebalances</p>
                 <p className="text-white font-mono text-sm">
                   {isLoading ? "..." : rebalanceCount}
                 </p>
               </div>
               <div>
-                <p className="text-[#666] text-xs mb-1">Blocks since last</p>
+                <p className="text-[#999] text-xs mb-1">Blocks since last</p>
                 <p className="text-white font-mono text-sm">
                   {isLoading ? "..." : blocksSinceRebalance?.toLocaleString() ?? "—"}
                 </p>
@@ -207,15 +165,15 @@ export function AgentIdentity({ curator, currentBlock, isLoading, rebalanceCount
       {activeTab === "Delegation" && (
         <div className="bg-[#1a1a1a] rounded-xl p-4">
           <div className="flex items-center justify-between mb-3">
-            <p className="text-[#666] text-xs">Delegation Terms</p>
+            <p className="text-[#999] text-xs">Delegation Terms</p>
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <p className="text-[#666] text-xs mb-1">Fee bounds</p>
+              <p className="text-[#999] text-xs mb-1">Fee bounds</p>
               <p className="text-white font-mono text-sm">[100, 50000] bps</p>
             </div>
             <div>
-              <p className="text-[#666] text-xs mb-1">Rate limit</p>
+              <p className="text-[#999] text-xs mb-1">Rate limit</p>
               <p className="text-white font-mono text-sm">30 blocks</p>
             </div>
           </div>
@@ -226,19 +184,19 @@ export function AgentIdentity({ curator, currentBlock, isLoading, rebalanceCount
         <div className="bg-[#1a1a1a] rounded-xl p-4">
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-[#666] text-sm">Rebalance count</span>
+              <span className="text-[#999] text-sm">Rebalance count</span>
               <span className="text-white font-mono text-sm">
                 {rebalanceCount}
               </span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-[#666] text-sm">Last rebalance block</span>
+              <span className="text-[#999] text-sm">Last rebalance block</span>
               <span className="text-white font-mono text-sm">
                 {curator?.lastRebalanceBlock?.toString() ?? "—"}
               </span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-[#666] text-sm">Performance fee</span>
+              <span className="text-[#999] text-sm">Performance fee</span>
               <span className="text-[#4ade80] font-mono text-sm">
                 {curator?.performanceFeeBps ? `${Number(curator.performanceFeeBps) / 100}%` : "—"}
               </span>

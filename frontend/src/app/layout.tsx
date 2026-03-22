@@ -14,12 +14,27 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "CuratedLP — AI-Managed Liquidity",
+  title: "CuratedLP — AI-Managed Liquidity on Uniswap v4",
   description:
-    "AI-managed concentrated liquidity vault on Uniswap v4. Deposit passively, let AI optimize.",
+    "AI-managed concentrated liquidity vault on Uniswap v4. Deposit passively, let the AI curator optimize your LP positions on Base.",
   icons: {
     icon: "/logo.png",
     apple: "/logo.png",
+  },
+  openGraph: {
+    title: "CuratedLP — AI-Managed Liquidity on Uniswap v4",
+    description:
+      "Deposit passively into an AI-managed concentrated liquidity vault on Uniswap v4. Built on Base.",
+    images: [{ url: "/og-image.png", width: 1200, height: 630, alt: "CuratedLP" }],
+    type: "website",
+    siteName: "CuratedLP",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "CuratedLP — AI-Managed Liquidity on Uniswap v4",
+    description:
+      "Deposit passively into an AI-managed concentrated liquidity vault on Uniswap v4. Built on Base.",
+    images: ["/og-image.png"],
   },
 };
 

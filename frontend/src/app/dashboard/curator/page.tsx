@@ -7,7 +7,6 @@ import { OperationalStats } from "@/components/curator/operational-stats";
 import { useVaultData } from "@/hooks/use-vault-data";
 import { useCuratorData } from "@/hooks/use-curator-data";
 import { useVaultEvents } from "@/hooks/use-vault-events";
-import { useAgentMetadata } from "@/hooks/use-agent-metadata";
 
 export default function CuratorPage() {
   const vault = useVaultData();
@@ -16,7 +15,6 @@ export default function CuratorPage() {
   );
   const { rebalances, isLoading: eventsLoading } = useVaultEvents();
   const { data: blockNumber } = useBlockNumber({ watch: true });
-  const { agentCard, tokenUri } = useAgentMetadata(curator?.erc8004IdentityId);
 
   return (
     <div className="space-y-6">
@@ -25,8 +23,6 @@ export default function CuratorPage() {
         currentBlock={blockNumber}
         isLoading={curatorLoading || vault.isLoading}
         rebalanceCount={rebalances.length}
-        agentCard={agentCard ?? undefined}
-        tokenUri={tokenUri}
       />
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2">
