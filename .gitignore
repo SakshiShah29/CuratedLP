@@ -11,6 +11,8 @@ out/
 # Docs
 docs/
 
+creds/
+
 # Dotenv file
 .env
 
