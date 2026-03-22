@@ -2,6 +2,7 @@
 
 import { Search, Calendar, ArrowRight } from "lucide-react"
 import { WalletButton } from "@/components/layout/wallet-button"
+import { FaucetButton } from "@/components/dashboard/faucet-button"
 import { useState, useRef, useEffect, useMemo } from "react"
 import { useRouter } from "next/navigation"
 
@@ -185,6 +186,7 @@ export function Header() {
           <Calendar className="w-4 h-4 text-[#999] ml-2" />
         </div>
 
+        <FaucetButton />
         <WalletButton />
       </div>
     </header>
