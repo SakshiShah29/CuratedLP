@@ -124,8 +124,8 @@ export function VaultHealthCard({
         {/* Tick Range */}
         <div className="bg-[#1a1a1a] rounded-xl p-4">
           <div className="flex items-center gap-2 mb-3">
-            <Target className="w-3.5 h-3.5 text-[#666]" />
-            <p className="text-[#666] text-xs">Tick Range</p>
+            <Target className="w-3.5 h-3.5 text-[#999]" />
+            <p className="text-[#999] text-xs">Tick Range</p>
             {fullRange && (
               <span className="px-2 py-0.5 rounded-md bg-[#4ade80]/10 text-[#4ade80] text-[10px] font-mono font-medium">
                 FULL RANGE
@@ -134,7 +134,7 @@ export function VaultHealthCard({
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="bg-[#0a0a0a] rounded-lg p-3 border border-[#222]">
-              <p className="text-[#555] text-[10px] uppercase tracking-wider mb-1">Lower</p>
+              <p className="text-[#999] text-[10px] uppercase tracking-wider mb-1">Lower</p>
               <p className="text-white font-mono text-base font-medium">
                 {isLoading ? "..." : tickLower?.toLocaleString() ?? "—"}
               </p>
@@ -145,7 +145,7 @@ export function VaultHealthCard({
               )}
             </div>
             <div className="bg-[#0a0a0a] rounded-lg p-3 border border-[#222]">
-              <p className="text-[#555] text-[10px] uppercase tracking-wider mb-1">Upper</p>
+              <p className="text-[#999] text-[10px] uppercase tracking-wider mb-1">Upper</p>
               <p className="text-white font-mono text-base font-medium">
                 {isLoading ? "..." : tickUpper?.toLocaleString() ?? "—"}
               </p>
@@ -162,7 +162,7 @@ export function VaultHealthCard({
         <div className="bg-[#1a1a1a] rounded-xl p-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-[#666] text-xs mb-1">Active Liquidity</p>
+              <p className="text-[#999] text-xs mb-1">Active Liquidity</p>
               <p className="text-white font-mono font-semibold text-xl">
                 {isLoading ? "..." : liqFormatted}
               </p>
@@ -175,7 +175,7 @@ export function VaultHealthCard({
 
         {/* Pool Composition — Donut */}
         <div className="bg-[#1a1a1a] rounded-xl p-4">
-          <p className="text-[#666] text-xs mb-4">Pool Composition</p>
+          <p className="text-[#999] text-xs mb-4">Pool Composition</p>
           <DonutChart
             token0Pct={poolComposition.token0Pct}
             token1Pct={poolComposition.token1Pct}

@@ -55,7 +55,7 @@ export function OperationalStats({
     >
       <div className="flex items-center justify-between mb-5">
         <h2 className="text-white text-lg font-semibold">Operational Stats</h2>
-        <button className="text-[#666] hover:text-white transition-colors">
+        <button className="text-[#999] hover:text-white transition-colors">
           <MoreHorizontal className="w-5 h-5" />
         </button>
       </div>
@@ -66,12 +66,12 @@ export function OperationalStats({
             key={index}
             className="flex items-center justify-between bg-[#1a1a1a] rounded-xl p-4"
           >
-            <p className="text-[#666] text-sm">{stat.label}</p>
+            <p className="text-[#999] text-sm">{stat.label}</p>
             <div className="flex items-baseline gap-1">
               <span className={`font-mono font-semibold ${stat.highlight ? "text-[#FFD93D]" : "text-white"}`}>
                 {stat.value}
               </span>
-              <span className="text-[#666] text-xs">{stat.subtext}</span>
+              <span className="text-[#999] text-xs">{stat.subtext}</span>
             </div>
           </div>
         ))}

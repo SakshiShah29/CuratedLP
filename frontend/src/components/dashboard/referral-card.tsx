@@ -46,7 +46,7 @@ export function ReferralCard({ curator, isLoading }: ReferralCardProps) {
             <div>
               <p className="text-white text-sm font-medium">Curator AI</p>
               {basename && <p className="text-[#4ade80] text-xs font-mono">{basename}</p>}
-              <p className={`text-xs font-mono ${curator?.active ? "text-[#4ade80]" : "text-[#888]"}`}>
+              <p className={`text-xs font-mono ${curator?.active ? "text-[#4ade80]" : "text-[#aaa]"}`}>
                 {isLoading ? "..." : curator?.active ? "Online" : "Offline"}
               </p>
             </div>
@@ -56,7 +56,7 @@ export function ReferralCard({ curator, isLoading }: ReferralCardProps) {
               href={`${BASESCAN_URL}/address/${curator.wallet}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-[#666] hover:text-white transition-colors"
+              className="text-[#999] hover:text-white transition-colors"
             >
               <ExternalLink className="w-4 h-4" />
             </a>
@@ -66,10 +66,10 @@ export function ReferralCard({ curator, isLoading }: ReferralCardProps) {
         {/* Address */}
         <div className="bg-[#0a0a0a] rounded-lg p-3 mb-3 border border-[#222]">
           <div className="flex items-center justify-between mb-1">
-            <p className="text-[#666] text-[10px] uppercase tracking-wider">Smart Account</p>
+            <p className="text-[#999] text-[10px] uppercase tracking-wider">Smart Account</p>
             <button
               onClick={handleCopy}
-              className="text-[#666] hover:text-[#4ade80] transition-colors"
+              className="text-[#999] hover:text-[#4ade80] transition-colors"
             >
               <Copy className="w-3 h-3" />
             </button>
@@ -84,7 +84,7 @@ export function ReferralCard({ curator, isLoading }: ReferralCardProps) {
             <p className="text-[#4ade80] text-xs font-mono">
               ERC-8004 #{curator?.erc8004IdentityId?.toString() ?? "—"}
             </p>
-            <p className="text-[#666] text-[10px]">Verified Identity</p>
+            <p className="text-[#999] text-[10px]">Verified Identity</p>
           </div>
           <a
             href={`${BASESCAN_URL}/address/${IDENTITY_REGISTRY}`}

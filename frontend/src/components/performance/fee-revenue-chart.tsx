@@ -39,21 +39,21 @@ export function FeeRevenueChart({ swaps, isLoading }: FeeRevenueChartProps) {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h3 className="text-white font-medium">Fee Revenue</h3>
-          <p className="text-[#888] text-sm">Cumulative fees earned (ETH)</p>
+          <p className="text-[#aaa] text-sm">Cumulative fees earned (ETH)</p>
         </div>
         <button className="p-2 hover:bg-[#2a2a2a] rounded-lg transition-colors">
-          <MoreHorizontal className="w-4 h-4 text-[#888]" />
+          <MoreHorizontal className="w-4 h-4 text-[#aaa]" />
         </button>
       </div>
 
       <div className="flex-1 min-h-0">
         {isLoading ? (
           <div className="flex items-center justify-center h-full">
-            <p className="text-[#666] text-sm animate-pulse">Loading chart data...</p>
+            <p className="text-[#999] text-sm animate-pulse">Loading chart data...</p>
           </div>
         ) : chartData.length === 0 ? (
           <div className="flex items-center justify-center h-full">
-            <p className="text-[#666] text-sm">No swap data available yet.</p>
+            <p className="text-[#999] text-sm">No swap data available yet.</p>
           </div>
         ) : (
           <ResponsiveContainer width="100%" height="100%">

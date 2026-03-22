@@ -4,10 +4,11 @@ import { useState } from "react";
 import {
   ChevronDown,
   ChevronUp,
+  ChevronLeft,
+  ChevronRight,
   ExternalLink,
   CheckCircle,
   AlertCircle,
-  Database,
   Copy,
   Loader2,
   RefreshCw,
@@ -20,6 +21,7 @@ import {
   Zap,
   BarChart3,
 } from "lucide-react";
+import Image from "next/image";
 import { useFilecoinLogs } from "@/hooks/use-filecoin-logs";
 import type { LogEntry, ExecutionLog } from "@/hooks/use-filecoin-logs";
 import { formatTimeAgo } from "@/lib/format";
@@ -74,7 +76,7 @@ function DecisionBadge({ decision }: { decision: string }) {
     );
   }
   return (
-    <span className="px-2.5 py-1 rounded-lg text-xs font-bold bg-[#333] text-[#888]">
+    <span className="px-2.5 py-1 rounded-lg text-xs font-bold bg-[#333] text-[#aaa]">
       SKIP
     </span>
   );
@@ -118,7 +120,7 @@ function CopyButton({ text }: { text: string }) {
       {copied ? (
         <CheckCircle className="w-3 h-3 text-[#4ade80]" />
       ) : (
-        <Copy className="w-3 h-3 text-[#666]" />
+        <Copy className="w-3 h-3 text-[#999]" />
       )}
     </button>
   );
@@ -133,8 +135,8 @@ function StatCard({ label, value, color = "text-white", icon: Icon }: {
   return (
     <div className="bg-[#0f0f0f] rounded-xl p-3 border border-[#1f1f1f]">
       <div className="flex items-center gap-1.5 mb-1">
-        {Icon && <Icon className="w-3 h-3 text-[#555]" />}
-        <p className="text-[#555] text-xs">{label}</p>
+        {Icon && <Icon className="w-3 h-3 text-[#999]" />}
+        <p className="text-[#999] text-xs">{label}</p>
       </div>
       <p className={`font-mono text-sm font-medium ${color}`}>{value}</p>
     </div>
@@ -149,7 +151,7 @@ function SectionHeader({ icon: Icon, title, accent = "text-[#60a5fa]" }: {
   return (
     <div className="flex items-center gap-2 mb-3">
       <Icon className={`w-4 h-4 ${accent}`} />
-      <p className="text-[#888] text-xs font-semibold uppercase tracking-wider">{title}</p>
+      <p className="text-[#aaa] text-xs font-semibold uppercase tracking-wider">{title}</p>
     </div>
   );
 }
@@ -220,7 +222,7 @@ function LogDetail({
     return (
       <div className="px-4 pb-4 border-t border-[#222] pt-4">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 text-[#888] text-sm">
+          <div className="flex items-center gap-2 text-[#aaa] text-sm">
             {isFailed ? (
               <>
                 <AlertCircle className="w-4 h-4" />
@@ -236,7 +238,7 @@ function LogDetail({
           {isFailed && (
             <button
               onClick={onRetry}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#0a0a0a] border border-[#333] rounded-lg text-[#888] text-xs hover:text-white hover:bg-[#1a1a1a] transition-colors"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#0a0a0a] border border-[#333] rounded-lg text-[#aaa] text-xs hover:text-white hover:bg-[#1a1a1a] transition-colors"
             >
               <RefreshCw className="w-3 h-3" />
               Retry
@@ -269,7 +271,7 @@ function LogDetail({
             <StatCard label="Idle Token0" value={fmtBigNum(ps.idleToken0)} />
             <StatCard label="Idle Token1" value={fmtBigNum(ps.idleToken1)} />
           </div>
-          <div className="flex items-center gap-4 mt-2 text-[#555] text-xs font-mono">
+          <div className="flex items-center gap-4 mt-2 text-[#999] text-xs font-mono">
             <span>Block #{ps.currentBlock.toLocaleString()}</span>
             <span>Curator #{ps.activeCuratorId}</span>
             {ps.accruedPerformanceFee !== "0" && (
@@ -359,7 +361,7 @@ function LogDetail({
                     </span>
                   ))}
                   {rec.model && (
-                    <span className="px-2 py-0.5 rounded-md bg-[#333] text-[#888] text-xs font-mono">
+                    <span className="px-2 py-0.5 rounded-md bg-[#333] text-[#aaa] text-xs font-mono">
                       {rec.model}
                     </span>
                   )}
@@ -376,20 +378,20 @@ function LogDetail({
           <SectionHeader icon={Shield} title="TEE Verification" accent="text-[#4ade80]" />
           <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
             <div className="bg-[#0f0f0f] rounded-xl p-3 border border-[#1f1f1f]">
-              <p className="text-[#555] text-xs mb-1">Status</p>
+              <p className="text-[#999] text-xs mb-1">Status</p>
               {ec.verifiable ? (
                 <span className="inline-flex items-center gap-1.5 text-[#4ade80] text-sm font-medium">
                   <CheckCircle className="w-4 h-4" /> Verified (TEE)
                 </span>
               ) : (
-                <span className="inline-flex items-center gap-1.5 text-[#888] text-sm">
+                <span className="inline-flex items-center gap-1.5 text-[#aaa] text-sm">
                   <AlertCircle className="w-4 h-4" /> Unverified
                 </span>
               )}
             </div>
             {ec.attestationHash && (
               <div className="bg-[#0f0f0f] rounded-xl p-3 border border-[#1f1f1f]">
-                <p className="text-[#555] text-xs mb-1">Attestation Hash</p>
+                <p className="text-[#999] text-xs mb-1">Attestation Hash</p>
                 <div className="flex items-center gap-1">
                   <span className="text-white text-xs font-mono truncate">
                     {ec.attestationHash}
@@ -400,7 +402,7 @@ function LogDetail({
             )}
             {ec.computeJobId && (
               <div className="bg-[#0f0f0f] rounded-xl p-3 border border-[#1f1f1f]">
-                <p className="text-[#555] text-xs mb-1">Compute Job ID</p>
+                <p className="text-[#999] text-xs mb-1">Compute Job ID</p>
                 <span className="text-white text-xs font-mono truncate block">
                   {ec.computeJobId}
                 </span>
@@ -438,7 +440,7 @@ function LogDetail({
             </a>
           )}
           {log.gasUsed !== undefined && log.gasUsed !== null && (
-            <span className="text-[#666] text-xs font-mono">
+            <span className="text-[#999] text-xs font-mono">
               Gas: {log.gasUsed.toLocaleString()}
             </span>
           )}
@@ -448,8 +450,8 @@ function LogDetail({
       {/* Storage proof */}
       <div className="flex items-center gap-4 pt-2 border-t border-[#1f1f1f]">
         <div className="flex items-center gap-1.5">
-          <Database className="w-3.5 h-3.5 text-[#60a5fa]" />
-          <span className="text-[#666] text-xs">Filecoin CID:</span>
+          <Image src="/filecoin-logo.svg" alt="Filecoin" width={14} height={14} />
+          <span className="text-[#999] text-xs">Filecoin CID:</span>
           <a
             href={`${IPFS_GATEWAYS[0]}${entry.cid}`}
             target="_blank"
@@ -482,16 +484,21 @@ export function FilecoinLogs() {
   } = useFilecoinLogs();
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState("All");
+  const [logPage, setLogPage] = useState(0);
+  const LOG_PAGE_SIZE = 8;
 
   const filters = ["All", "Rebalance", "Claim", "Skip"];
 
-  const filtered = entries.filter((e) => {
-    if (activeFilter === "All") return true;
-    if (activeFilter === "Rebalance") return e.decision.includes("rebalance");
-    if (activeFilter === "Claim") return e.decision.includes("claim");
-    if (activeFilter === "Skip") return e.decision === "skip";
-    return true;
-  });
+  const filtered = entries
+    .filter((e) => {
+      if (activeFilter === "All") return true;
+      if (activeFilter === "Rebalance") return e.decision.includes("rebalance");
+      if (activeFilter === "Claim") return e.decision.includes("claim");
+      if (activeFilter === "Skip") return e.decision === "skip";
+      return true;
+    })
+    .slice()
+    .reverse();
 
   // Get latest forward price from most recent log
   const latestLog = fullLogs.size > 0
@@ -508,14 +515,14 @@ export function FilecoinLogs() {
     >
       <div className="flex items-center justify-between mb-5">
         <div className="flex items-center gap-2.5">
-          <Database className="w-5 h-5 text-[#60a5fa]" />
+          <Image src="/filecoin-logo.svg" alt="Filecoin" width={22} height={22} />
           <h2 className="text-white text-lg font-semibold">
             Agent Execution Logs
           </h2>
         </div>
         <div className="flex items-center gap-3">
           {isFetchingIpfs && (
-            <span className="flex items-center gap-1.5 text-[#888] text-xs">
+            <span className="flex items-center gap-1.5 text-[#aaa] text-xs">
               <Loader2 className="w-3 h-3 animate-spin" />
               Fetching IPFS...
             </span>
@@ -547,11 +554,11 @@ export function FilecoinLogs() {
         {filters.map((filter) => (
           <button
             key={filter}
-            onClick={() => setActiveFilter(filter)}
+            onClick={() => { setActiveFilter(filter); setLogPage(0); }}
             className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
               activeFilter === filter
                 ? "bg-[#60a5fa] text-black"
-                : "bg-[#1a1a1a] text-[#888] hover:text-white border border-[#2a2a2a]"
+                : "bg-[#1a1a1a] text-[#aaa] hover:text-white border border-[#2a2a2a]"
             }`}
           >
             {filter}
@@ -572,29 +579,29 @@ export function FilecoinLogs() {
       {isLoading ? (
         <div className="flex flex-col items-center py-12">
           <Loader2 className="w-6 h-6 text-[#60a5fa] animate-spin mb-3" />
-          <p className="text-[#666] text-sm">
+          <p className="text-[#999] text-sm">
             Reading LogRegistry from Filecoin...
           </p>
         </div>
       ) : error ? (
         <div className="py-12 text-center">
-          <AlertCircle className="w-8 h-8 text-[#666] mx-auto mb-2" />
-          <p className="text-[#888] text-sm">{error}</p>
+          <AlertCircle className="w-8 h-8 text-[#999] mx-auto mb-2" />
+          <p className="text-[#aaa] text-sm">{error}</p>
         </div>
       ) : entries.length === 0 ? (
         <div className="py-12 text-center">
-          <Database className="w-8 h-8 text-[#333] mx-auto mb-2" />
-          <p className="text-[#666] text-sm">
+          <Image src="/filecoin-logo.svg" alt="Filecoin" width={32} height={32} className="mx-auto mb-2 opacity-30" />
+          <p className="text-[#999] text-sm">
             No heartbeat logs recorded yet
           </p>
-          <p className="text-[#444] text-xs mt-1">
+          <p className="text-[#aaa] text-xs mt-1">
             Logs will appear here after the agent records its first heartbeat on
             Filecoin
           </p>
         </div>
       ) : (
-        <div className="space-y-2">
-          {filtered.map((entry) => {
+        <div className="space-y-2 max-h-[520px] overflow-y-auto premium-scrollbar">
+          {filtered.slice(logPage * LOG_PAGE_SIZE, (logPage + 1) * LOG_PAGE_SIZE).map((entry) => {
             const key = `${entry.heartbeat}-${entry.cid}`;
             const isExpanded = expandedId === key;
             const log = fullLogs.get(entry.cid);
@@ -607,8 +614,8 @@ export function FilecoinLogs() {
                 key={key}
                 className={`rounded-xl overflow-hidden transition-colors ${
                   isExpanded
-                    ? "bg-[#1a1a1a] border border-[#2a2a2a]"
-                    : "bg-[#111] hover:bg-[#1a1a1a] border border-transparent"
+                    ? "bg-[#1a1a1a] border border-[#3a3a3a]"
+                    : "bg-[#111] hover:bg-[#1a1a1a] border border-[#2a2a2a]"
                 }`}
               >
                 {/* Header row */}
@@ -617,11 +624,11 @@ export function FilecoinLogs() {
                   className="w-full p-3.5 flex items-center justify-between text-left"
                 >
                   <div className="flex items-center gap-3 flex-wrap min-w-0">
-                    <span className="text-[#555] text-xs font-mono font-bold w-10 shrink-0">
+                    <span className="text-[#999] text-xs font-mono font-bold w-10 shrink-0">
                       #{Number(entry.heartbeat)}
                     </span>
                     <DecisionBadge decision={entry.decision} />
-                    <span className="text-[#666] text-xs shrink-0">
+                    <span className="text-[#999] text-xs shrink-0">
                       {formatTimeAgo(Number(entry.timestamp))}
                     </span>
                     {log?.uniswapData && (
@@ -635,7 +642,7 @@ export function FilecoinLogs() {
                       </span>
                     )}
                     {log?.recommendation && (
-                      <span className="text-[#666] text-xs font-mono hidden lg:inline">
+                      <span className="text-[#999] text-xs font-mono hidden lg:inline">
                         {safeFixed(log.recommendation.confidence != null ? log.recommendation.confidence * 100 : undefined, 0)}% conf
                       </span>
                     )}
@@ -643,13 +650,13 @@ export function FilecoinLogs() {
                       <CheckCircle className="w-3.5 h-3.5 text-[#4ade80] hidden md:inline shrink-0" />
                     )}
                     {isFetching && (
-                      <Loader2 className="w-3.5 h-3.5 text-[#666] animate-spin shrink-0" />
+                      <Loader2 className="w-3.5 h-3.5 text-[#999] animate-spin shrink-0" />
                     )}
                   </div>
                   {isExpanded ? (
-                    <ChevronUp className="w-4 h-4 text-[#555] flex-shrink-0 ml-2" />
+                    <ChevronUp className="w-4 h-4 text-[#999] flex-shrink-0 ml-2" />
                   ) : (
-                    <ChevronDown className="w-4 h-4 text-[#555] flex-shrink-0 ml-2" />
+                    <ChevronDown className="w-4 h-4 text-[#999] flex-shrink-0 ml-2" />
                   )}
                 </button>
 
@@ -672,6 +679,31 @@ export function FilecoinLogs() {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Pagination */}
+      {filtered.length > LOG_PAGE_SIZE && (
+        <div className="flex items-center justify-between mt-4 pt-3 border-t border-[#1a1a1a]">
+          <span className="text-[#999] text-xs font-mono">
+            {logPage * LOG_PAGE_SIZE + 1}–{Math.min((logPage + 1) * LOG_PAGE_SIZE, filtered.length)} of {filtered.length}
+          </span>
+          <div className="flex gap-1">
+            <button
+              onClick={() => setLogPage((p) => Math.max(0, p - 1))}
+              disabled={logPage === 0}
+              className="p-1.5 rounded-lg hover:bg-[#1a1a1a] transition-colors disabled:opacity-30"
+            >
+              <ChevronLeft className="w-4 h-4 text-[#aaa]" />
+            </button>
+            <button
+              onClick={() => setLogPage((p) => Math.min(Math.ceil(filtered.length / LOG_PAGE_SIZE) - 1, p + 1))}
+              disabled={logPage >= Math.ceil(filtered.length / LOG_PAGE_SIZE) - 1}
+              className="p-1.5 rounded-lg hover:bg-[#1a1a1a] transition-colors disabled:opacity-30"
+            >
+              <ChevronRight className="w-4 h-4 text-[#aaa]" />
+            </button>
+          </div>
         </div>
       )}
     </div>

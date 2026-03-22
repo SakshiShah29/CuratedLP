@@ -20,7 +20,7 @@ function CustomTooltip({ active, payload, label }: { active?: boolean; payload?:
   if (active && payload && payload.length) {
     return (
       <div className="bg-[#1a1a1a] border border-[#2a2a2a] px-3 py-2 rounded-lg shadow-lg">
-        <p className="text-[#666] text-xs mb-1">Swap #{label}</p>
+        <p className="text-[#999] text-xs mb-1">Swap #{label}</p>
         <p className="text-white text-sm font-semibold font-mono">
           {payload[0].value.toFixed(6)} ETH
         </p>
@@ -55,7 +55,7 @@ export function PerformanceChart({ swaps, isLoading }: PerformanceChartProps) {
     >
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-white text-lg font-semibold">Fee Revenue</h2>
-        <button className="text-[#666] hover:text-white transition-colors">
+        <button className="text-[#999] hover:text-white transition-colors">
           <MoreHorizontal className="w-5 h-5" />
         </button>
       </div>
@@ -63,11 +63,11 @@ export function PerformanceChart({ swaps, isLoading }: PerformanceChartProps) {
       <div className="h-[160px] w-full">
         {isLoading ? (
           <div className="flex items-center justify-center h-full">
-            <p className="text-[#666] text-sm animate-pulse">Loading...</p>
+            <p className="text-[#999] text-sm animate-pulse">Loading...</p>
           </div>
         ) : chartData.length === 0 ? (
           <div className="flex items-center justify-center h-full">
-            <p className="text-[#666] text-sm">No swap data yet</p>
+            <p className="text-[#999] text-sm">No swap data yet</p>
           </div>
         ) : (
           <ResponsiveContainer width="100%" height="100%">

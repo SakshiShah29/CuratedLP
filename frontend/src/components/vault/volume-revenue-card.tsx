@@ -55,8 +55,8 @@ export function VolumeRevenueCard({
         {stats.map((stat) => (
           <div key={stat.label} className="bg-[#1a1a1a] rounded-xl p-4 flex items-center justify-between">
             <div>
-              <p className="text-[#666] text-xs">{stat.label}</p>
-              <p className="text-[#888] text-[10px]">{stat.sub}</p>
+              <p className="text-[#999] text-xs">{stat.label}</p>
+              <p className="text-[#aaa] text-[10px]">{stat.sub}</p>
             </div>
             <p
               className={`font-mono font-semibold text-lg ${

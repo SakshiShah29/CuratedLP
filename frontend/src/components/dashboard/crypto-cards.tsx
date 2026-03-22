@@ -85,10 +85,10 @@ export function CryptoCards({
               )}
               <div>
                 <p className="text-white text-sm font-medium">{crypto.name}</p>
-                <p className="text-[#666] text-xs">{crypto.symbol}</p>
+                <p className="text-[#999] text-xs">{crypto.symbol}</p>
               </div>
             </div>
-            <button className="text-[#666] hover:text-white transition-colors">
+            <button className="text-[#999] hover:text-white transition-colors">
               <MoreHorizontal className="w-5 h-5" />
             </button>
           </div>

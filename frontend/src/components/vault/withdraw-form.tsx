@@ -79,16 +79,16 @@ export function WithdrawForm({
 
         {estimatedToken0 !== undefined && estimatedToken1 !== undefined && (
           <div className="text-sm text-[#999] p-3 rounded-xl bg-[#1a1a1a] border border-[#2a2a2a] space-y-1.5">
-            <p className="text-xs text-[#666]">You will receive approximately:</p>
+            <p className="text-xs text-[#999]">You will receive approximately:</p>
             <div className="flex items-center gap-1.5 font-mono text-white">
               <TokenIcon symbol={token0Symbol} size={16} />
               <span>{formatTokenAmount(estimatedToken0, token0Decimals)}</span>
-              <span className="text-[#666]">{token0Symbol}</span>
+              <span className="text-[#999]">{token0Symbol}</span>
             </div>
             <div className="flex items-center gap-1.5 font-mono text-white">
               <TokenIcon symbol={token1Symbol} size={16} />
               <span>{formatTokenAmount(estimatedToken1, token1Decimals)}</span>
-              <span className="text-[#666]">{token1Symbol}</span>
+              <span className="text-[#999]">{token1Symbol}</span>
             </div>
           </div>
         )}

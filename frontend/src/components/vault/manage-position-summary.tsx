@@ -47,7 +47,7 @@ export function ManagePositionSummary({
             "radial-gradient(ellipse at 50% 0%, rgba(74, 222, 128, 0.12) 0%, transparent 50%), #141414",
         }}
       >
-        <p className="text-[#666] text-sm text-center py-4">
+        <p className="text-[#999] text-sm text-center py-4">
           Connect wallet to view your position
         </p>
       </div>
@@ -65,23 +65,23 @@ export function ManagePositionSummary({
       <h3 className="text-white text-lg font-semibold mb-4">Your Position</h3>
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <div className="bg-[#1a1a1a] rounded-xl p-3">
-          <p className="text-[#666] text-xs">cvLP Balance</p>
+          <p className="text-[#999] text-xs">cvLP Balance</p>
           <p className="text-white font-mono font-semibold">{formatTokenAmount(shareBalance)}</p>
         </div>
         <div className="bg-[#1a1a1a] rounded-xl p-3">
-          <p className="text-[#666] text-xs">% of Vault</p>
+          <p className="text-[#999] text-xs">% of Vault</p>
           <p className="text-[#4ade80] font-mono font-semibold">{ownershipPct.toFixed(2)}%</p>
         </div>
         <div className="bg-[#1a1a1a] rounded-xl p-3">
-          <p className="text-[#666] text-xs">Est. {token0Symbol}</p>
+          <p className="text-[#999] text-xs">Est. {token0Symbol}</p>
           <p className="text-white font-mono font-semibold">{formatTokenAmount(estToken0)}</p>
         </div>
         <div className="bg-[#1a1a1a] rounded-xl p-3">
-          <p className="text-[#666] text-xs">Est. {token1Symbol}</p>
+          <p className="text-[#999] text-xs">Est. {token1Symbol}</p>
           <p className="text-white font-mono font-semibold">{formatTokenAmount(estToken1, 6)}</p>
         </div>
         <div className="bg-[#1a1a1a] rounded-xl p-3">
-          <p className="text-[#666] text-xs">Share Price</p>
+          <p className="text-[#999] text-xs">Share Price</p>
           <p className="text-[#4ade80] font-mono font-semibold text-xs">
             {sharePrice0} {token0Symbol}
           </p>

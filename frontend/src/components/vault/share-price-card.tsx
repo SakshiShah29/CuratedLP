@@ -30,16 +30,16 @@ export function SharePriceCard({
       <h3 className="text-white text-lg font-semibold mb-5">Share Price (NAV)</h3>
 
       <div className="bg-[#1a1a1a] rounded-xl p-5">
-        <p className="text-[#666] text-xs mb-2">1 cvLP =</p>
+        <p className="text-[#999] text-xs mb-2">1 cvLP =</p>
         <p className="text-[#4ade80] font-mono font-semibold text-2xl">
           {isLoading ? "..." : sharePrice0}{" "}
-          <span className="text-sm text-[#888]">{token0Symbol}</span>
+          <span className="text-sm text-[#aaa]">{token0Symbol}</span>
         </p>
         <p className="text-[#4ade80]/70 font-mono text-sm mt-1">
           + {isLoading ? "..." : sharePrice1}{" "}
-          <span className="text-[#888]">{token1Symbol}</span>
+          <span className="text-[#aaa]">{token1Symbol}</span>
         </p>
-        <p className="text-[#666] text-xs mt-3 font-mono">
+        <p className="text-[#999] text-xs mt-3 font-mono">
           Total Supply: {isLoading ? "..." : formatTokenAmount(totalSupply)} cvLP
         </p>
       </div>

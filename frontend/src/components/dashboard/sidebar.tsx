@@ -36,13 +36,13 @@ export function Sidebar({ rebalanceCount, lastRebalanceTime }: SidebarProps) {
 
   return (
     <aside className="w-[200px] bg-[#0a0a0a] p-4 flex flex-col min-h-screen border-r border-[#1a1a1a]">
-      <div className="flex items-center gap-1 mb-8">
+      <Link href="/" className="flex items-center gap-1 mb-8">
         <Image src="/logo.png" alt="CuratedLP" width={38} height={38} />
         <span className="text-white font-semibold text-lg">CuratedLP</span>
-      </div>
+      </Link>
 
       <div className="mb-6">
-        <p className="text-[#666] text-xs uppercase tracking-wider mb-3">General</p>
+        <p className="text-[#999] text-xs uppercase tracking-wider mb-3">General</p>
         <nav className="space-y-1">
           {generalLinks.map((link) => (
             <Link
@@ -52,7 +52,7 @@ export function Sidebar({ rebalanceCount, lastRebalanceTime }: SidebarProps) {
                 "flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm transition-colors",
                 isActive(link.href)
                   ? "bg-[#1a1a1a] text-white"
-                  : "text-[#888] hover:text-white hover:bg-[#1a1a1a]/50"
+                  : "text-[#aaa] hover:text-white hover:bg-[#1a1a1a]/50"
               )}
             >
               <link.icon className="w-4 h-4" />
@@ -82,11 +82,11 @@ export function Sidebar({ rebalanceCount, lastRebalanceTime }: SidebarProps) {
           </div>
           <div className="space-y-2 mb-3">
             <div className="flex items-center justify-between">
-              <span className="text-[#666] text-[10px]">Last Rebalance</span>
+              <span className="text-[#999] text-[10px]">Last Rebalance</span>
               <span className="text-white text-[10px] font-mono">{lastRebalanceTime ?? "—"}</span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-[#666] text-[10px]">Rebalances</span>
+              <span className="text-[#999] text-[10px]">Rebalances</span>
               <span className="text-[#4ade80] text-[10px] font-mono">{rebalanceCount ?? "—"}</span>
             </div>
           </div>
