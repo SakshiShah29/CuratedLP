@@ -46,6 +46,7 @@ const ENFORCER_ADDRESS = process.env.ENFORCER_ADDRESS as Address;
 
 // Token0 address (MockERC20 on Base Sepolia — from poolKey.currency0)
 const TOKEN0_ADDRESS = "0xb06794b116533EA0948009eCFa268c8E690902F1" as Address;
+const TOKEN1_ADDRESS = "0xF4Ac05194da1e2A0af24Fb22d9471935371aC355" as Address;
 
 const MIN_FEE = Number(process.env.DELEGATION_MIN_FEE ?? "100");
 const MAX_FEE = Number(process.env.DELEGATION_MAX_FEE ?? "50000");
@@ -69,7 +70,7 @@ async function main() {
   // Pre-flight: check hook's idle token0 balance covers the accrued fee.
   // After a rebalance all token0 is deployed as liquidity — the hook has no
   // idle balance to pay from. Skip gracefully rather than hitting a Panic.
-  const [accruedFee0, accruedFee1, hookBalance] = await Promise.all([
+  const [accruedFee0, accruedFee1, hookBalance0, hookBalance1] = await Promise.all([
     publicClient.readContract({
       address: HOOK_ADDRESS,
       abi: [{ type: "function", name: "accruedPerformanceFee0", inputs: [], outputs: [{ type: "uint256" }], stateMutability: "view" }],
@@ -86,6 +87,12 @@ async function main() {
       functionName: "balanceOf",
       args: [HOOK_ADDRESS],
     }),
+    publicClient.readContract({
+      address: TOKEN1_ADDRESS,
+      abi: [{ type: "function", name: "balanceOf", inputs: [{ name: "account", type: "address" }], outputs: [{ type: "uint256" }], stateMutability: "view" }],
+      functionName: "balanceOf",
+      args: [HOOK_ADDRESS],
+    }),
   ]);
 
   if (accruedFee0 === 0n && accruedFee1 === 0n) {
@@ -93,14 +100,15 @@ async function main() {
     process.exit(0);
   }
 
-  if (hookBalance < accruedFee0) {
+  if (hookBalance0 < accruedFee0 && hookBalance1 < accruedFee1) {
     console.log(JSON.stringify({
       success: false,
       error: "InsufficientHookBalance",
       accruedFee0: accruedFee0.toString(),
       accruedFee1: accruedFee1.toString(),
-      hookToken0Balance: hookBalance.toString(),
-      note: "Fees track swap volume but token0 is deployed as liquidity. Will be claimable after next rebalance collects LP fees.",
+      hookToken0Balance: hookBalance0.toString(),
+      hookToken1Balance: hookBalance1.toString(),
+      note: "Fees track swap volume but token0, token1 is deployed as liquidity. Will be claimable after next rebalance collects LP fees.",
     }, null, 2));
     process.exit(0); // Not an error — try again after next rebalance
   }
