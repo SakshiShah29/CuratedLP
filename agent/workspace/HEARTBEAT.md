@@ -6,11 +6,12 @@ and eigencompute BEFORE making any decision. The ANALYZE step provides market in
 that may reveal conditions invisible from pool state alone.**
 
 **TIMEOUTS: eigencompute calls the EigenCompute TEE which runs two Venice API calls (sentiment
-+ analysis) — this needs 90-120 seconds total. Use timeout: 120 for eigencompute. Use timeout: 60
-for uniswap-data. Use timeout: 300 for filecoin-store (uploads to Filecoin + records on-chain — can take up to 3 min).
++ analysis) — this needs 120-240 seconds total (TEE has higher network latency than local).
+Use timeout: 300 for eigencompute. Use timeout: 60 for uniswap-data. Use timeout: 300 for
+filecoin-store (uploads to Filecoin + records on-chain — can take up to 3 min).
 Use timeout: 30 for all others. eigencompute prints keepalive pings every 15s —
 if you see keepalive output, the process IS working. Do NOT kill it while pings are appearing.
-Wait the full 120s timeout. Only kill if 120s has truly elapsed with no output at all.**
+Wait the full 300s timeout. Only kill if 300s has truly elapsed with no output at all.**
 
 ## Available tools (use EXACT commands below, no others exist)
 

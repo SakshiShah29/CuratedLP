@@ -295,7 +295,7 @@ async function runTEEMode(): Promise<EigenComputeResult> {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body,
-    signal: AbortSignal.timeout(90_000), // 90s timeout for two Venice round-trips
+    signal: AbortSignal.timeout(240_000), // 4min timeout — TEE Venice calls are slower than local
   });
 
   if (!response.ok) {
