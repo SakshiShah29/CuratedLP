@@ -32,11 +32,11 @@
 
 | Contract | Address |
 |----------|---------|
-| **CuratedVaultHook** | [`0x308454a20466361FeaDeCf15B88c1e3e7f5f1AC4`](https://sepolia.basescan.org/address/0x308454a20466361FeaDeCf15B88c1e3e7f5f1AC4) |
-| **VaultShares (cvLP)** | [`0x1a84Db8633c4b1B9f6FDB8e91F136a005F007A00`](https://sepolia.basescan.org/address/0x1a84Db8633c4b1B9f6FDB8e91F136a005F007A00) |
-| **CaveatEnforcer** | [`0xBF0bC0c6D04a2AE242D75e603C3EA2e948aa5A0F`](https://sepolia.basescan.org/address/0xBF0bC0c6D04a2AE242D75e603C3EA2e948aa5A0F) |
-| **Token0 (mUSDC)** | [`0xb06794b116533EA0948009eCFa268c8E690902F1`](https://sepolia.basescan.org/address/0xb06794b116533EA0948009eCFa268c8E690902F1) |
-| **Token1 (mwstETH)** | [`0xF4Ac05194da1e2A0af24Fb22d9471935371aC355`](https://sepolia.basescan.org/address/0xF4Ac05194da1e2A0af24Fb22d9471935371aC355) |
+| **CuratedVaultHook** | [`0x9488D4819933Eb0d040a24241EEfb6D0F7C51AC4`](https://sepolia.basescan.org/address/0x9488D4819933Eb0d040a24241EEfb6D0F7C51AC4) |
+| **VaultShares (cvLP)** | [`0x2Ae9125a841E727aBF09072Ec2060c44BAAabEAE`](https://sepolia.basescan.org/address/0x2Ae9125a841E727aBF09072Ec2060c44BAAabEAE) |
+| **CaveatEnforcer** | [`0x3703Aa925e42F5878a647Bc3846F2E096c2135A8`](https://sepolia.basescan.org/address/0x3703Aa925e42F5878a647Bc3846F2E096c2135A8) |
+| **Token0 (mUSDC)** | [`0xb6eeA72564e01F8a6AD1d2D7eDf690065F2A72dF`](https://sepolia.basescan.org/address/0xb6eeA72564e01F8a6AD1d2D7eDf690065F2A72dF) |
+| **Token1 (mwstETH)** | [`0xD79D66484c1C51B9D5cd455e3C7Ee3d0950e448D`](https://sepolia.basescan.org/address/0xD79D66484c1C51B9D5cd455e3C7Ee3d0950e448D) |
 
 ---
 

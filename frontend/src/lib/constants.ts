@@ -14,7 +14,7 @@ export const BASENAMES_REVERSE_REGISTRAR = "0x876eF94ce0773052a2f81921E70FF25a5e
 export const FILECOIN_CALIBRATION_CHAIN_ID = 314;
 export const FILECOIN_RPC = "https://api.node.glif.io/rpc/v1";
 export const LOG_REGISTRY_ADDRESS = "0x3b53eb6FCc0b0a618db98F05BB4007aFcDbde94d" as const;
-export const AGENT_ID = 2200n;
+export const AGENT_ID = 2857n;
 export const IPFS_GATEWAYS = [
   "https://ipfs.io/ipfs/",
   "https://cloudflare-ipfs.com/ipfs/",
