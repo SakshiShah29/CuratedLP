@@ -131,6 +131,20 @@ export const curatedVaultHookAbi = [
   },
   {
     type: "function",
+    name: "poolId",
+    inputs: [],
+    outputs: [{ name: "", type: "bytes32" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "poolManager",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
     name: "getTokens",
     inputs: [],
     outputs: [

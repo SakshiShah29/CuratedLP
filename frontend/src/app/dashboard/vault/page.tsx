@@ -26,6 +26,7 @@ export default function VaultPage() {
     cumulativeFeeRevenue: vault.cumulativeFeeRevenue,
     tickLower: vault.tickLower,
     tickUpper: vault.tickUpper,
+    currentTick: vault.currentTick,
     performanceMetrics: vault.performanceMetrics,
     swaps,
     token0Decimals: user.token0Decimals,

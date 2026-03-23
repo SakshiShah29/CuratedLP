@@ -21,6 +21,8 @@ interface VaultMetricsInput {
   cumulativeFeeRevenue?: bigint;
   tickLower?: number;
   tickUpper?: number;
+  /** The pool's actual current tick from PoolManager slot0 */
+  currentTick?: number;
   performanceMetrics?: [bigint, bigint, bigint, bigint, number, number, number];
   swaps: SwapTrackedEvent[];
   token0Decimals?: number;
@@ -52,9 +54,8 @@ function getPositionAmounts(
   liquidity: bigint,
   tickLower: number,
   tickUpper: number,
+  currentTick: number = 0,
 ): [bigint, bigint] {
-  // Approximate current tick as 0 (pool initialized at tick 0, small number of swaps)
-  const currentTick = 0;
   const sqrtPrice = Math.sqrt(1.0001 ** currentTick); // ≈ 1.0
   const sqrtPriceA = Math.sqrt(1.0001 ** tickLower);
   const sqrtPriceB = Math.sqrt(1.0001 ** tickUpper);
@@ -87,6 +88,7 @@ export function useVaultMetrics({
   tickUpper,
   performanceMetrics,
   swaps,
+  currentTick: currentTickInput,
   token0Decimals = 18,
   token1Decimals = 18,
 }: VaultMetricsInput): VaultMetrics {
@@ -101,7 +103,7 @@ export function useVaultMetrics({
     let posAmount0 = 0n;
     let posAmount1 = 0n;
     if (liquidity && liquidity > 0n && tickLower !== undefined && tickUpper !== undefined) {
-      [posAmount0, posAmount1] = getPositionAmounts(liquidity, tickLower, tickUpper);
+      [posAmount0, posAmount1] = getPositionAmounts(liquidity, tickLower, tickUpper, currentTickInput ?? 0);
     }
     const idle0 = totalAssets?.[0] ?? 0n;
     const idle1 = totalAssets?.[1] ?? 0n;
@@ -210,5 +212,5 @@ export function useVaultMetrics({
       fees7d,
       formattedCumulativeVolume,
     };
-  }, [totalAssets, totalSupply, cumulativeVolume, cumulativeFeeRevenue, performanceMetrics, swaps, currentBlock, token0Decimals, token1Decimals, tickLower, tickUpper]);
+  }, [totalAssets, totalSupply, cumulativeVolume, cumulativeFeeRevenue, performanceMetrics, swaps, currentBlock, token0Decimals, token1Decimals, tickLower, tickUpper, currentTickInput]);
 }
