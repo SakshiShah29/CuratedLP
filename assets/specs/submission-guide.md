@@ -68,7 +68,7 @@ Authorization: Bearer <apiKey>
   "description": "A Uniswap v4 hook on Base that transforms a standard concentrated liquidity pool into an AI-managed vault. LPs deposit tokens passively; a registered AI curator agent continuously optimizes the tick range and swap fee using Venice AI. The curator operates within cryptographically enforced bounds via MetaMask's delegation framework and earns performance fees only when it outperforms passive LP returns.",
   "problemStatement": "Concentrated liquidity on Uniswap v3/v4 requires active management that most LPs cannot perform — leading to out-of-range positions and impermanent loss. CuratedLP solves this by letting an AI agent manage positions autonomously within cryptographically enforced bounds, making concentrated liquidity accessible to passive LPs while ensuring the agent cannot exceed its mandate.",
   "repoURL": "https://github.com/<org>/CuratedLP",
-  "trackUUIDs": ["<uuid1>", "<uuid2>", "..."],
+  "trackUUIDs": ["ea3b366947c54689bd82ae80bf9f3310","0d69d56a8a084ac5b7dbe0dc1da73e1d","53c67bb0b07e42a894c597691e3a0a38","020214c160fc43339dd9833733791e6b","3bf41be958da497bbb69f1a150c76af9","10bd47fac07e4f85bda33ba482695b24","49a19e54cdde48a6a22bd7604d07292e","627a3f5a288344489fe777212b03f953","fdb76d08812b43f6a5f454744b66f590"],
   "conversationLog": "Document of human-agent collaboration: brainstorms, pivots, breakthroughs, key decisions.",
   "submissionMetadata": {
     "agentFramework": "other",

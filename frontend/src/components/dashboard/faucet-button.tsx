@@ -9,8 +9,8 @@ const MINT_ABI = parseAbi([
   "function mint(address to, uint256 amount) external",
 ]);
 
-const TOKEN0 = "0xb06794b116533EA0948009eCFa268c8E690902F1" as const; // mUSDC
-const TOKEN1 = "0xF4Ac05194da1e2A0af24Fb22d9471935371aC355" as const; // mwstETH
+const TOKEN0 = "0xb6eeA72564e01F8a6AD1d2D7eDf690065F2A72dF" as const; // mUSDC
+const TOKEN1 = "0xD79D66484c1C51B9D5cd455e3C7Ee3d0950e448D" as const; // mwstETH
 const MINT_AMOUNT = parseEther("100"); // 100 tokens per click
 
 export function FaucetButton() {

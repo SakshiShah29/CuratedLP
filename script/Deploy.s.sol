@@ -81,20 +81,47 @@ contract DeployScript is Script {
             hooks: IHooks(address(hook))
         });
 
-        // tick 0 → sqrtPriceX96 = 2^96 → price = 1:1
-        uint160 sqrtPriceX96 = 79228162514264337593543950336; // 2^96
+        // wstETH ≈ $2000 USDC (both tokens 18 decimals, no decimal adjustment needed)
+        // tick = floor(ln(price) / ln(1.0001))
+        // price 2000 → tick 76012, price 1/2000 → tick -76013
+        int24 startTick;
+        if (address(token0) == address(tokenA)) {
+            // tokenA (USDC) is token0, tokenB (wstETH) is token1
+            // P = wstETH_per_USDC = 1/2000 → tick -76013
+            startTick = -76013;
+        } else {
+            // tokenB (wstETH) is token0, tokenA (USDC) is token1
+            // P = USDC_per_wstETH = 2000 → tick 76012
+            startTick = 76012;
+        }
+        uint160 sqrtPriceX96 = TickMath.getSqrtPriceAtTick(startTick);
         IPoolManager(POOL_MANAGER).initialize(key, sqrtPriceX96);
-        console.log("Pool initialized at 1:1 price");
+        console.log("Pool initialized at wstETH/USDC price ~$2000");
 
         // ── Step 4: Mint tokens, approve, and do initial deposit ─────────
-        uint256 depositAmount = 100 ether;
-        token0.mint(deployer, depositAmount);
-        token1.mint(deployer, depositAmount);
+        // At ~$2000/wstETH, deposit 1 wstETH + 2000 USDC for balanced liquidity
+        uint256 usdcAmount = 200000 ether; // 200,000 USDC (18 decimals)
+        uint256 wstETHAmount = 100 ether; // 100 wstETH (18 decimals)
 
-        token0.approve(address(hook), depositAmount);
-        token1.approve(address(hook), depositAmount);
+        uint256 amount0;
+        uint256 amount1;
+        if (address(token0) == address(tokenA)) {
+            // token0 = USDC, token1 = wstETH
+            amount0 = usdcAmount;
+            amount1 = wstETHAmount;
+        } else {
+            // token0 = wstETH, token1 = USDC
+            amount0 = wstETHAmount;
+            amount1 = usdcAmount;
+        }
 
-        uint256 shares = hook.deposit(depositAmount, depositAmount, 0, 0, 0, type(uint256).max);
+        token0.mint(deployer, amount0);
+        token1.mint(deployer, amount1);
+
+        token0.approve(address(hook), amount0);
+        token1.approve(address(hook), amount1);
+
+        uint256 shares = hook.deposit(amount0, amount1, 0, 0, 0, type(uint256).max);
         console.log("Initial deposit complete, shares:", shares);
 
         vm.stopBroadcast();

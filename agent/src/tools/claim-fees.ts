@@ -45,8 +45,8 @@ const HOOK_ADDRESS = process.env.HOOK_ADDRESS as Address;
 const ENFORCER_ADDRESS = process.env.ENFORCER_ADDRESS as Address;
 
 // Token0 address (MockERC20 on Base Sepolia — from poolKey.currency0)
-const TOKEN0_ADDRESS = "0xb06794b116533EA0948009eCFa268c8E690902F1" as Address;
-const TOKEN1_ADDRESS = "0xF4Ac05194da1e2A0af24Fb22d9471935371aC355" as Address;
+const TOKEN0_ADDRESS = "0xb6eeA72564e01F8a6AD1d2D7eDf690065F2A72dF" as Address;
+const TOKEN1_ADDRESS = "0xD79D66484c1C51B9D5cd455e3C7Ee3d0950e448D" as Address;
 
 const MIN_FEE = Number(process.env.DELEGATION_MIN_FEE ?? "100");
 const MAX_FEE = Number(process.env.DELEGATION_MAX_FEE ?? "50000");

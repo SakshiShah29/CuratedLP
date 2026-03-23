@@ -25,8 +25,8 @@ const RPC_URL = process.env.BASE_SEPOLIA_RPC!;
 const HOOK_ADDRESS = process.env.HOOK_ADDRESS as Address;
 const CURATOR_KEY = process.env.CURATOR_PRIVATE_KEY as Hex;
 
-const TOKEN0 = "0xb06794b116533EA0948009eCFa268c8E690902F1" as Address;
-const TOKEN1 = "0xF4Ac05194da1e2A0af24Fb22d9471935371aC355" as Address;
+const TOKEN0 = "0xb6eeA72564e01F8a6AD1d2D7eDf690065F2A72dF" as Address;
+const TOKEN1 = "0xD79D66484c1C51B9D5cd455e3C7Ee3d0950e448D" as Address;
 
 const ERC20_ABI = parseAbi([
   "function mint(address to, uint256 amount) external",

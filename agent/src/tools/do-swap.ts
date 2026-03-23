@@ -33,8 +33,8 @@ const CURATOR_KEY = process.env.CURATOR_PRIVATE_KEY as Hex;
 const POOL_SWAP_TEST = "0x8b5bcc363dde2614281ad875bad385e0a785d3b9" as Address;
 
 // Tokens (from poolKey storage on hook)
-const TOKEN0 = "0xb06794b116533EA0948009eCFa268c8E690902F1" as Address;
-const TOKEN1 = "0xF4Ac05194da1e2A0af24Fb22d9471935371aC355" as Address;
+const TOKEN0 = "0xb6eeA72564e01F8a6AD1d2D7eDf690065F2A72dF" as Address;
+const TOKEN1 = "0xD79D66484c1C51B9D5cd455e3C7Ee3d0950e448D" as Address;
 
 // Tick math constants
 const MIN_SQRT_PRICE_LIMIT = 4295128740n;         // MIN_SQRT_PRICE + 1
