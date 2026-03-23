@@ -32,7 +32,7 @@ export function OperationalStats({
     },
     {
       label: "Pending Fees (T1)",
-      value: formatTokenAmount(accruedFee1, 6),
+      value: formatTokenAmount(accruedFee1, 18),
       subtext: "claimable",
       highlight: true,
     },

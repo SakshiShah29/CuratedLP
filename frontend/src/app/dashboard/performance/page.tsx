@@ -22,6 +22,7 @@ export default function PerformancePage() {
     cumulativeFeeRevenue: vault.cumulativeFeeRevenue,
     tickLower: vault.tickLower,
     tickUpper: vault.tickUpper,
+    currentTick: vault.currentTick,
     performanceMetrics: vault.performanceMetrics,
     swaps,
   });
