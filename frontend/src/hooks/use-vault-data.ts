@@ -63,6 +63,7 @@ export function useVaultData() {
       { ...hookContract, functionName: "getTokens" },
       { ...hookContract, functionName: "poolId" },
       { ...hookContract, functionName: "poolManager" },
+      { ...hookContract, functionName: "totalLiquidity" },
     ],
     query: { refetchInterval: 12_000 },
   });
@@ -84,6 +85,7 @@ export function useVaultData() {
     tokens,
     poolIdResult,
     poolManagerResult,
+    totalLiquidityResult,
   ] = result.data ?? [];
 
   const poolIdValue = poolIdResult?.result as `0x${string}` | undefined;
@@ -134,6 +136,8 @@ export function useVaultData() {
     tokens: tokens?.result as [string, string] | undefined,
     /** The pool's current tick from PoolManager slot0 */
     currentTick: decoded?.tick,
+    sqrtPriceX96: decoded?.sqrtPriceX96,
+    totalLiquidity: totalLiquidityResult?.result as bigint | undefined,
     refetch: result.refetch,
   };
 }

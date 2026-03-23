@@ -52,6 +52,10 @@ export default function ManagePage() {
             token1Allowance={user.token1Allowance}
             totalAssets={vault.totalAssets}
             totalSupply={vault.totalSupply}
+            totalLiquidity={vault.totalLiquidity}
+            sqrtPriceX96={vault.sqrtPriceX96}
+            tickLower={vault.tickLower}
+            tickUpper={vault.tickUpper}
             isConnected={user.isConnected}
             onSuccess={handleTxSuccess}
             refetchAllowances={user.refetch}

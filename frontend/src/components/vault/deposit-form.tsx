@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { TokenInput } from "@/components/ui/token-input";
 import { Button } from "@/components/ui/button";
 import { TxLink } from "@/components/ui/tx-link";
@@ -10,6 +10,52 @@ import { HOOK_ADDRESS } from "@/lib/constants";
 import { parseUnits, formatUnits } from "viem";
 import { Loader2, ArrowDownToLine, Check } from "lucide-react";
 import { TokenIcon } from "@/components/ui/token-icon";
+
+/**
+ * Compute the token0/token1 deposit ratio from the pool's current sqrtPriceX96
+ * and the active tick range. This matches how Uniswap v4 calculates liquidity
+ * from amounts, so the paired amount won't be wasted.
+ *
+ * Returns { amount0Per1Liq, amount1Per1Liq } in human-readable units,
+ * or null if data is missing or price is outside range.
+ */
+function computePoolRatio(
+  sqrtPriceX96: bigint,
+  tickLower: number,
+  tickUpper: number,
+  token0Decimals: number,
+  token1Decimals: number,
+): { ratio01: number; ratio10: number } | null {
+  // sqrtPrice as a float: sqrtPriceX96 / 2^96
+  const Q96 = 2 ** 96;
+  const sqrtP = Number(sqrtPriceX96) / Q96;
+  if (sqrtP === 0) return null;
+
+  const sqrtLower = Math.sqrt(1.0001 ** tickLower);
+  const sqrtUpper = Math.sqrt(1.0001 ** tickUpper);
+
+  // Price is below range: position is 100% token0
+  if (sqrtP <= sqrtLower) return null;
+  // Price is above range: position is 100% token1
+  if (sqrtP >= sqrtUpper) return null;
+
+  // Amount of each token per unit of liquidity (in raw units)
+  const amount0Raw = (1 / sqrtP) - (1 / sqrtUpper);
+  const amount1Raw = sqrtP - sqrtLower;
+
+  if (amount0Raw <= 0 || amount1Raw <= 0) return null;
+
+  // Convert to human-readable by scaling for decimal difference
+  const amount0Human = amount0Raw / (10 ** token0Decimals);
+  const amount1Human = amount1Raw / (10 ** token1Decimals);
+
+  // ratio01: how much token1 per 1 token0
+  // ratio10: how much token0 per 1 token1
+  return {
+    ratio01: amount1Human / amount0Human,
+    ratio10: amount0Human / amount1Human,
+  };
+}
 
 interface DepositFormProps {
   token0Address?: `0x${string}`;
@@ -24,6 +70,10 @@ interface DepositFormProps {
   token1Allowance?: bigint;
   totalAssets?: [bigint, bigint];
   totalSupply?: bigint;
+  totalLiquidity?: bigint;
+  sqrtPriceX96?: bigint;
+  tickLower?: number;
+  tickUpper?: number;
   isConnected: boolean;
   onSuccess?: () => void;
   refetchAllowances?: () => void;
@@ -42,6 +92,10 @@ export function DepositForm({
   token1Allowance,
   totalAssets,
   totalSupply,
+  totalLiquidity,
+  sqrtPriceX96,
+  tickLower,
+  tickUpper,
   isConnected,
   onSuccess,
   refetchAllowances,
@@ -63,15 +117,18 @@ export function DepositForm({
     isSuccess: approval1Success,
   } = useTokenApproval();
 
-  // Auto-calculate paired amount based on vault's current asset ratio
+  // Compute deposit ratio from sqrtPriceX96 + tick range (accurate even when liquidity is deployed)
+  const poolRatio = useMemo(() => {
+    if (sqrtPriceX96 == null || tickLower == null || tickUpper == null) return null;
+    return computePoolRatio(sqrtPriceX96, tickLower, tickUpper, token0Decimals, token1Decimals);
+  }, [sqrtPriceX96, tickLower, tickUpper, token0Decimals, token1Decimals]);
+
+  // Auto-calculate paired amount based on pool's price ratio
   const handleAmount0Change = (val: string) => {
     setAmount0(val);
     setLastEdited(0);
-    if (totalAssets && totalAssets[0] > 0n && totalAssets[1] > 0n && val && parseFloat(val) > 0) {
-      const asset0 = Number(formatUnits(totalAssets[0], token0Decimals));
-      const asset1 = Number(formatUnits(totalAssets[1], token1Decimals));
-      const ratio = asset1 / asset0;
-      const paired = (parseFloat(val) * ratio).toFixed(token1Decimals > 8 ? 8 : token1Decimals);
+    if (poolRatio && val && parseFloat(val) > 0) {
+      const paired = (parseFloat(val) * poolRatio.ratio01).toFixed(token1Decimals > 8 ? 8 : token1Decimals);
       setAmount1(paired);
     } else if (!val || parseFloat(val) <= 0) {
       setAmount1("");
@@ -81,11 +138,8 @@ export function DepositForm({
   const handleAmount1Change = (val: string) => {
     setAmount1(val);
     setLastEdited(1);
-    if (totalAssets && totalAssets[0] > 0n && totalAssets[1] > 0n && val && parseFloat(val) > 0) {
-      const asset0 = Number(formatUnits(totalAssets[0], token0Decimals));
-      const asset1 = Number(formatUnits(totalAssets[1], token1Decimals));
-      const ratio = asset0 / asset1;
-      const paired = (parseFloat(val) * ratio).toFixed(token0Decimals > 8 ? 8 : token0Decimals);
+    if (poolRatio && val && parseFloat(val) > 0) {
+      const paired = (parseFloat(val) * poolRatio.ratio10).toFixed(token0Decimals > 8 ? 8 : token0Decimals);
       setAmount0(paired);
     } else if (!val || parseFloat(val) <= 0) {
       setAmount0("");
@@ -125,14 +179,31 @@ export function DepositForm({
   }, [approval1Success]);
 
   // Estimate shares user will receive
+  // Uses the same formula as the hook: shares = (newLiquidity * totalSupply) / totalLiquidity
+  // We estimate newLiquidity from amount0 using the sqrtPrice math.
   let estimatedShares: string | null = null;
-  if (totalSupply && totalAssets && totalSupply > 0n && amount0Parsed > 0n) {
-    const [asset0] = totalAssets;
-    if (asset0 > 0n) {
-      const shares = (amount0Parsed * totalSupply) / asset0;
-      estimatedShares = Number(formatUnits(shares, 18)).toFixed(4);
+  if (totalSupply && totalSupply > 0n && totalLiquidity && totalLiquidity > 0n && sqrtPriceX96 && tickLower != null && tickUpper != null && amount0Parsed > 0n) {
+    const Q96 = 2n ** 96n;
+    const sqrtPLower = Math.sqrt(1.0001 ** tickLower);
+    const sqrtPUpper = Math.sqrt(1.0001 ** tickUpper);
+    const sqrtP = Number(sqrtPriceX96) / Number(Q96);
+
+    if (sqrtP > sqrtPLower && sqrtP < sqrtPUpper) {
+      // amount0 = L * (1/sqrtP - 1/sqrtPUpper) → L = amount0 / (1/sqrtP - 1/sqrtPUpper)
+      const denom = (1 / sqrtP) - (1 / sqrtPUpper);
+      if (denom > 0) {
+        const amount0Float = Number(formatUnits(amount0Parsed, token0Decimals));
+        const estimatedLiquidity = amount0Float / denom;
+        const totalLiqFloat = Number(totalLiquidity);
+        const totalSupplyFloat = Number(formatUnits(totalSupply, 18));
+        if (totalLiqFloat > 0) {
+          const shares = (estimatedLiquidity / totalLiqFloat) * totalSupplyFloat;
+          estimatedShares = shares.toFixed(4);
+        }
+      }
     }
   } else if (amount0Parsed > 0n && amount1Parsed > 0n && (!totalSupply || totalSupply === 0n)) {
+    // First deposit: geometric mean
     const val = Math.sqrt(
       Number(formatUnits(amount0Parsed, token0Decimals)) *
       Number(formatUnits(amount1Parsed, token1Decimals))
@@ -248,8 +319,8 @@ export function DepositForm({
           </div>
         )}
 
-        {/* Ratio info when vault has assets */}
-        {totalAssets && totalAssets[0] > 0n && totalAssets[1] > 0n && hasAmount && (
+        {/* Ratio info when pool ratio is available */}
+        {poolRatio && hasAmount && (
           <p className="text-xs text-[#999] px-1">Amounts auto-calculated to match pool ratio</p>
         )}
 
