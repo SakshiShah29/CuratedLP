@@ -7,7 +7,7 @@
  * Usage:
  *   npx tsx src/tools/do-swap.ts [--zeroForOne] [--amount <wei>]
  *
- * Defaults: zeroForOne=true, amount=1e18
+ * Defaults: zeroForOne=true, amount=2000e18
  */
 
 import "dotenv/config";
@@ -62,7 +62,7 @@ async function main() {
   const args = process.argv.slice(2);
   const zeroForOne = !args.includes("--oneForZero");
   const amountIdx = args.indexOf("--amount");
-  const amount = amountIdx >= 0 ? BigInt(args[amountIdx + 1]) : 1n * 10n ** 18n;
+  const amount = amountIdx >= 0 ? BigInt(args[amountIdx + 1]) : 200n * 10n ** 18n;
 
   if (!RPC_URL || !HOOK_ADDRESS || !CURATOR_KEY) {
     console.error("Missing env vars: BASE_SEPOLIA_RPC, HOOK_ADDRESS, CURATOR_PRIVATE_KEY");
