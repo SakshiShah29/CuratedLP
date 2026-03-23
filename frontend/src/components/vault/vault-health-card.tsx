@@ -31,8 +31,13 @@ function DonutChart({
   const strokeWidth = 18;
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
-  const token0Arc = (token0Pct / 100) * circumference;
-  const token1Arc = (token1Pct / 100) * circumference;
+  // Ensure both arcs are visible: clamp to at least 5% of the ring when non-zero
+  const minPct = 5;
+  const vis0 = token0Pct > 0 && token0Pct < minPct ? minPct : token0Pct;
+  const vis1 = token1Pct > 0 && token1Pct < minPct ? minPct : token1Pct;
+  const visTotal = vis0 + vis1;
+  const token0Arc = (vis0 / visTotal) * circumference;
+  const token1Arc = (vis1 / visTotal) * circumference;
   const gap = 4;
 
   return (

@@ -122,15 +122,20 @@ export function useVaultMetrics({
       }
     }
 
-    // ── Pool composition % ──
+    // ── Pool composition % (value-weighted using pool tick price) ──
     let poolComposition = { token0Pct: 50, token1Pct: 50 };
     const val0 = Number(formatUnits(managedAssets[0], d0));
     const val1 = Number(formatUnits(managedAssets[1], d1));
-    const total = val0 + val1;
+    // Normalize token1 (mwstETH) to token0 (mUSDC) terms using pool price.
+    // price = 1.0001^tick = token1 per token0, so 1 token1 = 1.0001^(-tick) token0.
+    const tick = currentTickInput ?? 0;
+    const token1PriceInToken0 = Math.pow(1.0001, -tick);
+    const val1Normalized = val1 * token1PriceInToken0;
+    const total = val0 + val1Normalized;
     if (total > 0) {
       poolComposition = {
         token0Pct: Math.round((val0 / total) * 100),
-        token1Pct: Math.round((val1 / total) * 100),
+        token1Pct: Math.round((val1Normalized / total) * 100),
       };
     }
 
