@@ -6,7 +6,7 @@
 <p align="center"><i>AI Agent-Managed Liquidity Vaults on Uniswap v4</i></p>
 
 <p align="center">
-  A Uniswap v4 hook on Base that turns a standard liquidity pool into a managed vault. Human LPs deposit tokens and choose an AI curator agent. The curator uses Venice AI's private inference to analyze market data, adjust concentrated liquidity ranges, and set dynamic swap fees &mdash; all while paying for its own inference and data costs via x402 micropayments through Locus. The human retains full withdrawal rights at all times. The curator's permissions are scoped via MetaMask Delegation Framework &mdash; it can rebalance but never withdraw LP funds.
+  A Uniswap v4 hook on Base that turns a standard liquidity pool into a managed vault. Human LPs deposit tokens and choose an AI curator agent. The curator uses Venice AI's private inference &mdash; verified inside an EigenCompute TEE &mdash; to analyze market data, adjust concentrated liquidity ranges, and set dynamic swap fees. Every execution log is stored on Filecoin with PDP proofs and indexed on-chain via a LogRegistry contract. The human retains full withdrawal rights at all times. The curator's permissions are scoped via MetaMask Delegation Framework &mdash; it can rebalance but never withdraw LP funds.
 </p>
 
 <p align="center">
@@ -60,29 +60,28 @@ The result: most concentrated liquidity is either passively mismanaged (earning 
 
 CuratedLP is a complete vault primitive where the AI agent operates autonomously but can never touch LP funds:
 
-> *LPs deposit wstETH + USDC into the vault. An AI curator analyzes markets privately via Venice AI. It rebalances the position and adjusts fees via MetaMask delegation. The curator pays for its own data and inference via x402/Locus. Performance is recorded on-chain via ERC-8004 ReputationRegistry.*
+> *LPs deposit wstETH + USDC into the vault. An AI curator &mdash; orchestrated by [OpenClaw](https://openclaw.dev) on a 5-minute heartbeat and deployed on DigitalOcean &mdash; analyzes markets privately via Venice AI inside an EigenCompute TEE. It rebalances the position and adjusts fees via MetaMask delegation. Every decision is logged to Filecoin with verifiable proofs. Performance is recorded on-chain via ERC-8004 ReputationRegistry.*
 
 ### The Lifecycle
 
 | Phase | What Happens | Trust Model |
 |-------|-------------|-------------|
-| **A. Curator Registration** | Agent registers with ERC-8004 identity NFT. Identity is load-bearing &mdash; no NFT, no registration. Optional Self Protocol Agent ID as secondary layer. | On-chain identity verification |
+| **A. Curator Registration** | Agent registers with ERC-8004 identity NFT. Identity is load-bearing &mdash; no NFT, no registration. | On-chain identity verification |
 | **B. LP Deposit** | LP deposits wstETH + USDC, receives VaultShare tokens (ERC-20). Hook adds liquidity to the Uniswap v4 pool at the current tick range. | LP retains shares = withdrawal rights |
 | **C. Delegation Setup** | LP creates a MetaMask smart account, delegates rebalance authority to the curator with custom caveats: correct target, allowed functions, fee bounds, rate limiting. | Curator can rebalance, never withdraw |
-| **D. AI Analysis** | Every 5 minutes: agent reads pool state, fetches market data via x402/AgentCash (paid through Locus wallet), sends everything to Venice AI for private inference. | Venice AI &mdash; private, uncensored analysis |
+| **D. AI Analysis** | Every 5 minutes: agent reads pool state, fetches market data from Uniswap Trading API, sends everything to Venice AI for private inference inside an EigenCompute TEE. Returns attestation hash for verifiability. | Venice AI in TEE &mdash; private, verifiable analysis |
 | **E. Rebalance** | If recommendation differs from current position: agent constructs rebalance calldata, redeems MetaMask delegation. Atomic: remove all liquidity, re-add at new range with new fee. | Caveat enforcer validates every parameter |
 | **F. Fee Override** | `beforeSwap` hook returns curator's recommended fee via `OVERRIDE_FEE_FLAG`. Dynamic fees adjust in real-time based on market conditions. | ~200 gas overhead per swap |
-| **G. Performance Tracking** | After each rebalance cycle, agent writes performance feedback to ERC-8004 ReputationRegistry on Base Sepolia. Permanent, verifiable curator track record. | Anyone can query reputation history |
+| **G. Performance Tracking** | After each cycle, agent stores the full execution log on Filecoin (IPFS + PDP proofs) and records the CID in LogRegistry on Filecoin mainnet. Performance feedback written to ERC-8004 ReputationRegistry on Base Sepolia. | Verifiable on-chain log trail |
 | **H. Withdrawal** | LP burns VaultShare tokens anytime. Hook removes proportional liquidity and returns tokens. No lockups, no permission needed. | Unconditional withdrawal rights |
 
 ### Key Features
 
 - **Scoped Delegation** &mdash; Custom `CuratedVaultCaveatEnforcer` ensures the curator can only call `rebalance()` and `claimPerformanceFee()` on the hook contract, with fee bounds and rate limiting enforced on-chain.
-- **Private AI Inference** &mdash; Venice AI runs analysis in a private enclave. Market reasoning never touches the chain &mdash; only the resulting rebalance action is visible.
-- **Self-Funding Agent** &mdash; The curator pays for market data (via x402/AgentCash) and inference (Venice AI) from its own Locus wallet. Earns performance fees to sustain operations.
+- **Private AI Inference** &mdash; Venice AI runs analysis inside an EigenCompute TEE. Market reasoning never touches the chain &mdash; only the resulting rebalance action is visible. Each inference produces a verifiable attestation hash.
 - **Dynamic Fees** &mdash; Pool was initialized with `DYNAMIC_FEE_FLAG`. The curator adjusts swap fees based on volatility, volume, and market conditions &mdash; optimizing LP revenue in real-time.
 - **Verifiable Reputation** &mdash; ERC-8004 IdentityRegistry gates registration. ReputationRegistry records performance after every rebalance. LPs can inspect a curator's full history before choosing.
-- **Human-Readable Identity** &mdash; Curators and LPs display as Basenames (`vault-curator.base.eth`) instead of hex addresses across the frontend.
+- **Filecoin Log Storage** &mdash; Every execution log (pool state, market data, AI recommendation, action taken) is stored on Filecoin via `filecoin-pin` with PDP proofs. CIDs are indexed on-chain in a LogRegistry contract on Filecoin mainnet.
 
 ---
 
@@ -107,10 +106,10 @@ CuratedLP is a complete vault primitive where the AI agent operates autonomously
  PHASE B: LP DEPOSIT
  ────────────────────────────────────────────────────────────────
   LP
-    |  deposit(amount0, amount1, curatorId)
+    |  deposit(amount0Desired, amount1Desired, amount0Min, amount1Min, minShares, deadline)
     v
   CuratedVaultHook
-    |  verify curator is active
+    |  verify deadline not expired, pool initialized
     |  transferFrom(LP -> hook) for USDC + wstETH
     |  calculate shares:
     |    if totalShares == 0: shares = sqrt(amount0 * amount1)
@@ -139,15 +138,15 @@ CuratedLP is a complete vault primitive where the AI agent operates autonomously
     |  CuratedVaultCaveatEnforcer checks:
     |    ✓ target == CuratedVaultHook address
     |    ✓ selector == rebalance() or claimPerformanceFee()
-    |    ✓ fee parameter within bounds (100-10000 bps)
+    |    ✓ fee parameter within bounds (100-50000 bps)
     |    ✓ block.number > lastRebalance + MIN_BLOCKS
     |
     --> Delegation signed and stored
 
 
- PHASE D: AI ANALYSIS LOOP (every 5 minutes)
+ PHASE D: AI ANALYSIS LOOP (every 5 minutes — OpenClaw on DigitalOcean)
  ────────────────────────────────────────────────────────────────
-  Agent
+  OpenClaw (Agent Orchestrator)
     |
     |-(1)-> Read pool state from Base RPC
     |        (current tick, liquidity, recent swap volume)
@@ -155,15 +154,12 @@ CuratedLP is a complete vault primitive where the AI agent operates autonomously
     |-(2)-> Uniswap Trading API: POST /v1/quote
     |        (wstETH/USDC price quotes — real API key required)
     |
-    |-(3)-> x402 APIs via AgentCash (Merit Systems)
-    |        (price data, social sentiment, volatility indicators)
-    |        Payment: USDC micropayments auto-deducted
-    |
-    |-(4)-> All payments routed through Locus wallet
-    |        (per-tx max: $0.50, daily cap: $5.00)
-    |
-    |-(5)-> Venice AI: POST /api/v1/chat/completions
-    |        Model: qwen3-235b or glm-4.7
+    |-(3)-> EigenCompute TEE: POST /analyze
+    |        Runs inside Intel TDX enclave (http://34.87.99.35:3000)
+    |        Internally calls Venice AI twice:
+    |          a) Sentiment analysis (web search ON)
+    |          b) Rebalance recommendation (web search OFF)
+    |        Model: glm-4.7 (primary) / llama-3.3-70b (fallback)
     |        ┌─────────────────────────────────────────────┐
     |        │  System: You manage concentrated liquidity   │
     |        │  for wstETH/USDC on Uniswap v4.             │
@@ -173,12 +169,16 @@ CuratedLP is a complete vault primitive where the AI agent operates autonomously
     |        │                                              │
     |        │  User: {pool state + prices + sentiment}     │
     |        └─────────────────────────────────────────────┘
+    |        Returns: recommendation + attestation hash
     |
-    |-(6)-> If recommendation differs significantly:
+    |-(4)-> If recommendation differs significantly:
     |        construct rebalance calldata
     |        redeem MetaMask delegation → execute on-chain
     |
-    --> Log all actions with timestamps + TxIDs
+    |-(5)-> Store execution log on Filecoin via filecoin-pin
+    |        Record CID in LogRegistry on Filecoin mainnet
+    |
+    --> Log all actions with timestamps + TxIDs + attestation
 
 
  PHASE E: REBALANCE EXECUTION
@@ -191,7 +191,7 @@ CuratedLP is a complete vault primitive where the AI agent operates autonomously
     |  call CuratedVaultCaveatEnforcer.beforeHook()
     |    ✓ correct target, function, fee bounds, rate limit
     v
-  CuratedVaultHook.rebalance(curatorId, newTickLower, newTickUpper, newFee)
+  CuratedVaultHook.rebalance(newTickLower, newTickUpper, newFee, maxIdleToken0, maxIdleToken1)
     |
     |  ┌─── Atomic Rebalance ─────────────────────────────┐
     |  │  1. Remove ALL liquidity (unlock + negative delta)│
@@ -260,8 +260,8 @@ CuratedLP is a complete vault primitive where the AI agent operates autonomously
   Adjust dynamic fee (within bounds)  Transfer VaultShare tokens
   Claim performance fee               Bypass caveat enforcer
   Read pool state                     Exceed rate limits
-  Call Venice AI                      Change curator parameters
-  Pay for data via x402/Locus         Access other curators' vaults
+  Call Venice AI via TEE               Change curator parameters
+  Store logs on Filecoin              Access other curators' vaults
 ```
 
 ---
@@ -271,12 +271,14 @@ CuratedLP is a complete vault primitive where the AI agent operates autonomously
 | Actor | Role |
 |-------|------|
 | **Liquidity Provider (LP)** | Deposits wstETH + USDC into vault, receives VaultShare tokens, chooses a curator, retains unconditional withdrawal rights |
-| **AI Curator Agent** | Registered with ERC-8004 identity. Analyzes markets via Venice AI, rebalances positions via MetaMask delegation, pays own costs via Locus/x402 |
+| **AI Curator Agent** | Registered with ERC-8004 identity. Orchestrated by OpenClaw on a 5-minute heartbeat (deployed on DigitalOcean). Analyzes markets via Venice AI (inside EigenCompute TEE), rebalances positions via MetaMask delegation, logs decisions to Filecoin |
+| **OpenClaw** | Agent orchestration framework. Runs the curator as a collection of CLI tools on a 5-minute heartbeat cycle: observe (pool state) → analyze (market data + TEE inference) → decide → act → store (Filecoin). Deployed on DigitalOcean |
 | **CuratedVaultHook** | Uniswap v4 hook &mdash; vault core. Manages deposits, withdrawals, liquidity, dynamic fees. Only the hook can add/remove liquidity from the pool |
 | **VaultShares** | ERC-20 receipt token. Minted on deposit, burned on withdrawal. Represents proportional claim on vault assets |
 | **CuratedVaultCaveatEnforcer** | MetaMask delegation caveat &mdash; validates every curator action against target, function, fee bounds, and rate limits |
 | **Venice AI** | Private inference engine &mdash; analyzes market data and recommends optimal tick ranges and fees |
-| **Locus Wallet** | Agent's on-chain wallet on Base (USDC). Spending controls prevent runaway costs |
+| **EigenCompute TEE** | Intel TDX Trusted Execution Environment that wraps Venice AI inference for verifiable computation |
+| **Filecoin + LogRegistry** | Execution logs stored on Filecoin (IPFS + PDP proofs). CIDs indexed on-chain via LogRegistry contract on Filecoin mainnet |
 | **ERC-8004 Registries** | IdentityRegistry gates curator registration. ReputationRegistry records performance history |
 
 ---
@@ -311,12 +313,9 @@ CuratedLP is a complete vault primitive where the AI agent operates autonomously
 | **Uniswap v4** | Core pool infrastructure | v4 hook for vault logic, `beforeSwap` for dynamic fees, Trading API for price quotes with real API key and TxIDs | Agentic Finance |
 | **Venice AI** | Private market analysis | Agent sends pool state + market data to Venice AI. Recommendation (tick range, fee, confidence) drives on-chain rebalance. Private inference &mdash; reasoning never on-chain | Private Agents, Trusted Actions |
 | **MetaMask Delegation** | Scoped curator permissions | Custom `CuratedVaultCaveatEnforcer` &mdash; LP delegates rebalance authority with fee bounds and rate limiting. Agent redeems delegation via Pimlico bundler | Best Use of Delegations |
-| **x402 / Merit** | Market data micropayments | Agent consumes price data, sentiment, volatility via AgentCash. Each API call costs USDC microcents, auto-paid. Agent cannot function without this data | Build with x402 |
-| **Locus** | Agent wallet management | Agent's USDC wallet on Base with spending controls (per-tx max $0.50, daily cap $5.00). All x402 payments route through Locus | Best Use of Locus |
+| **EigenCompute TEE** | Verifiable AI inference | Venice AI sentiment analysis and rebalance recommendation run inside an Intel TDX enclave via EigenCompute. Each inference returns an attestation hash proving computation integrity. Endpoint: `http://34.87.99.35:3000` | Verifiable Compute |
+| **Filecoin** | Permanent execution log storage | Every heartbeat cycle produces a full execution log (pool state, market data, AI recommendation, action taken). Stored on Filecoin via `filecoin-pin` with PDP proofs. CID recorded on-chain in LogRegistry (`0x3b53eb6FCc0b0a618db98F05BB4007aFcDbde94d`) on Filecoin mainnet. Frontend reads LogRegistry to display full agent history | Decentralized Storage |
 | **ERC-8004** | Identity + reputation | IdentityRegistry gates curator registration (load-bearing). ReputationRegistry records performance after every rebalance cycle | Identity + Reputation |
-| **Self Protocol** | Secondary identity layer | Agent registers for Self Agent ID NFT. Optional check in `registerCurator()` &mdash; additive to ERC-8004 | Best Agent ID Integration |
-| **ENS / Basenames** | Human-readable addresses | All addresses resolve to Basenames in frontend (`vault-curator.base.eth`). Curators, LPs, and tx logs display names, not hex | ENS Identity |
-| **Olas** | Supplementary market analysis | Agent hires Olas Mech for additional LP analysis. 10+ requests over hackathon period | Hire an Agent |
 
 ---
 
@@ -326,14 +325,16 @@ CuratedLP is a complete vault primitive where the AI agent operates autonomously
 |-------|-----------|---------|
 | **Smart Contracts** | Solidity 0.8.26 + Foundry | CuratedVaultHook, VaultShares, CaveatEnforcer |
 | **Hook Framework** | Uniswap v4-core + v4-periphery | Pool hooks, unlock pattern, SafeCallback |
-| **Identity** | ERC-8004 + Self Protocol | On-chain identity gating and agent ID |
+| **Identity** | ERC-8004 | On-chain identity gating and reputation tracking |
 | **Delegation** | MetaMask Delegation Toolkit | Smart accounts, custom caveats, Pimlico bundler |
 | **AI Inference** | Venice AI (OpenAI-compatible) | Private market analysis, rebalance recommendations |
-| **Payments** | x402 + AgentCash + Locus | Micropayments for market data, wallet management |
-| **Market Data** | Uniswap Trading API + Chainlink | Price feeds (wstETH/USD, ETH/USD), pool quotes |
-| **Agent Runtime** | Node.js / TypeScript | 5-minute analysis loop, delegation redemption |
-| **Frontend** | React + Wagmi + Viem | Vault dashboard, curator stats, deposit/withdraw UI |
-| **Network** | Base (mainnet) + Base Sepolia | L2 deployment, <$0.01 gas per tx |
+| **Verifiable Compute** | EigenCompute TEE (Intel TDX) | Wraps Venice AI inference in a TEE for attestation |
+| **Market Data** | Uniswap Trading API | Price quotes (wstETH/USDC), spread, price impact |
+| **Log Storage** | Filecoin + filecoin-pin | Permanent execution log storage with PDP proofs |
+| **Agent Runtime** | OpenClaw + Node.js / TypeScript | 5-minute heartbeat loop, CLI tool orchestration |
+| **Deployment** | DigitalOcean | Agent runs 24/7 on a DigitalOcean droplet |
+| **Frontend** | Next.js + Wagmi + Viem | Vault dashboard, curator stats, deposit/withdraw UI |
+| **Network** | Base Sepolia + Filecoin mainnet | L2 for vault ops, Filecoin for log permanence |
 
 ---
 
@@ -357,6 +358,18 @@ CuratedLP is a complete vault primitive where the AI agent operates autonomously
 | ERC-8004 IdentityRegistry | [`0x8004A818BFB912233c491871b3d84c89A494BD9e`](https://sepolia.basescan.org/address/0x8004A818BFB912233c491871b3d84c89A494BD9e) |
 | ERC-8004 ReputationRegistry | [`0x8004B663056A597Dffe9eCcC1965A193B7388713`](https://sepolia.basescan.org/address/0x8004B663056A597Dffe9eCcC1965A193B7388713) |
 
+### Filecoin Mainnet (Execution Log Index)
+
+| Contract | Address |
+|----------|---------|
+| LogRegistry | [`0x3b53eb6FCc0b0a618db98F05BB4007aFcDbde94d`](https://filfox.info/en/address/0x3b53eb6FCc0b0a618db98F05BB4007aFcDbde94d) |
+
+### EigenCompute TEE (Live)
+
+| Service | Endpoint |
+|---------|----------|
+| EigenCompute TEE (Intel TDX) | `http://34.87.99.35:3000` |
+
 ---
 
 ## Quick Start
@@ -368,7 +381,7 @@ CuratedLP is a complete vault primitive where the AI agent operates autonomously
 - Base Sepolia RPC endpoint
 - [Venice AI](https://venice.ai/settings/api) API key
 - [Uniswap](https://developers.uniswap.org/dashboard) API key
-- [Locus](https://app.paywithlocus.com) API key + funded wallet
+- [Pimlico](https://dashboard.pimlico.io) bundler API key
 
 ### 1. Clone & Install
 
@@ -399,7 +412,7 @@ Edit `.env`:
 | `PRIVATE_KEY` | Deployer wallet private key (0x-prefixed) |
 | `VENICE_API_KEY` | From [venice.ai/settings/api](https://venice.ai/settings/api) |
 | `UNISWAP_API_KEY` | From [developers.uniswap.org](https://developers.uniswap.org/dashboard) |
-| `LOCUS_API_KEY` | From [app.paywithlocus.com](https://app.paywithlocus.com) |
+| `PIMLICO_API_KEY` | From [dashboard.pimlico.io](https://dashboard.pimlico.io) |
 
 ### 4. Deploy
 
@@ -417,7 +430,7 @@ forge script script/Deploy.s.sol \
 cd agent
 npm install
 cp .env.example .env
-# Fill in VENICE_API_KEY, LOCUS_API_KEY, etc.
+# Fill in VENICE_API_KEY, UNISWAP_API_KEY, PIMLICO_API_KEY, etc.
 npm start
 ```
 
@@ -439,12 +452,13 @@ npm run dev
  2.  LP deposits wstETH + USDC                 → receives VaultShare tokens
  3.  LP creates MetaMask delegation             → curator scoped to rebalance only
  4.  Agent reads pool state from Base RPC       → current tick, liquidity, volume
- 5.  Agent fetches market data via x402         → paid through Locus wallet (USDC)
- 6.  Agent calls Venice AI                      → private inference, JSON recommendation
+ 5.  Agent fetches market data via Uniswap API  → price quotes, spread, impact
+ 6.  Agent calls Venice AI inside TEE           → verifiable inference, attestation hash
  7.  Agent rebalances via delegation            → atomic remove + re-add at new range
  8.  Dynamic fee updates on next swap           → beforeSwap returns new fee
- 9.  Performance written to ReputationRegistry  → verifiable curator track record
-10.  LP withdraws anytime                       → burns shares, receives tokens
+ 9.  Execution log stored on Filecoin           → CID recorded in LogRegistry on-chain
+10.  Performance written to ReputationRegistry  → verifiable curator track record
+11.  LP withdraws anytime                       → burns shares, receives tokens
 ```
 
 ---
@@ -466,26 +480,30 @@ curatedlp/
 │       └── HookMiner.sol                  # CREATE2 salt mining for hook address
 ├── script/
 │   └── Deploy.s.sol                       # Deployment script (Base Sepolia)
-├── agent/                                  # AI curator agent (Node.js)
+├── agent/                                  # AI curator agent (OpenClaw-orchestrated)
 │   └── src/
-│       ├── index.ts                       # Agent entry point — 5-minute loop
-│       ├── venice.ts                      # Venice AI client (OpenAI-compatible)
-│       ├── uniswap-api.ts                # Uniswap Trading API client
-│       ├── x402-client.ts                # AgentCash/x402 payment client
-│       ├── locus.ts                       # Locus wallet management
-│       ├── delegation.ts                 # MetaMask delegation redemption
-│       ├── mech-client.ts                # Olas Mech Marketplace client
-│       └── rebalancer.ts                 # Core rebalance decision logic
+│       ├── setup.ts                       # One-time curator registration
+│       ├── delegation.ts                 # MetaMask delegation lifecycle
+│       ├── sub-delegation.ts             # Three-party delegation chain
+│       ├── eigencompute-server.ts        # EigenCompute TEE HTTP server
+│       ├── workspace/
+│       │   └── SKILL.md                 # OpenClaw skill definition + heartbeat protocol
+│       └── tools/
+│           ├── pool-reader.ts            # Read on-chain hook state
+│           ├── venice-analyze.ts         # Venice AI sentiment + analysis
+│           ├── eigencompute.ts           # EigenCompute TEE wrapper
+│           ├── uniswap-data.ts           # Uniswap Trading API client
+│           ├── execute-rebalance.ts      # Delegation-based rebalance
+│           ├── filecoin-store.ts         # Filecoin log storage + LogRegistry
+│           ├── claim-fees.ts             # Claim curator performance fees
+│           └── set-agent-uri.ts          # Set ERC-8004 agent metadata URI
 ├── frontend/                               # React dashboard
 │   └── src/
-│       ├── pages/
-│       │   ├── VaultOverview.tsx           # Pool stats, TVL, deposit/withdraw
-│       │   ├── CuratorDashboard.tsx        # Agent status, Venice logs, payments
-│       │   └── Performance.tsx            # APY charts, fee breakdown, history
+│       ├── app/                            # Next.js app router pages
 │       ├── hooks/
-│       │   ├── useVaultData.ts            # On-chain vault reads
-│       │   ├── useUniswapAPI.ts           # Price display via Trading API
-│       │   └── useBasename.ts             # ENS/Basename resolution
+│       │   ├── use-vault-data.ts          # On-chain vault reads
+│       │   ├── use-filecoin-logs.ts       # Filecoin LogRegistry + IPFS fetch
+│       │   └── use-agent-metadata.ts      # ERC-8004 agent metadata
 │       └── components/
 ├── assets/                                 # Logo and banner
 │   ├── logo.png
@@ -504,11 +522,8 @@ curatedlp/
 | **Uniswap** | Real API key from developers.uniswap.org, functional swaps with real TxIDs, open source + README | |
 | **Venice AI** | Venice API for private cognition, outputs feed into on-chain action | |
 | **MetaMask** | Delegation Framework with meaningful innovation (custom CaveatEnforcer) | |
-| **Merit / x402** | x402 payment layer is load-bearing (agent depends on it for market data) | |
-| **Locus** | Working Locus integration on Base, USDC only | |
-| **Self Protocol** | Agent identity is load-bearing via Self Agent ID | |
-| **ENS** | ENS/Basenames establish identity on-chain in frontend | |
-| **Olas** | 10+ Mech Marketplace requests over hackathon period | |
+| **EigenLayer** | EigenCompute TEE wraps Venice AI inference for verifiable computation with attestation | |
+| **Filecoin** | Execution logs stored on Filecoin mainnet with PDP proofs, CIDs indexed on-chain in LogRegistry | |
 | **ERC-8004** | IdentityRegistry gates registration + ReputationRegistry records performance | |
 
 ---
